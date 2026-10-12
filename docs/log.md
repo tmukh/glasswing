@@ -19,3 +19,9 @@ now 1e-4. RoPE tables were built on CPU only; the lab's GPU run exposed it.
 
 Break-it lab M1, causal mask removed: val loss 0.55 instead of 2.96 after 400 steps, generation garbage.
 Exposed by `uv run ruff check .` (F841, unused `future`) and `uv run pytest` (3 failures). Fixed with `git revert`.
+
+M2: Rust forward pass and tokenizer. Parity passed on the first run: 78 traced tensors within 1e-4 of
+PyTorch, 11 tokenizer cases identical, locally and in CI. Clippy wanted `is_multiple_of`.
+
+Break-it lab M2, layer 1 q_proj loaded transposed (square, so shapes pass): Rust CI red with
+`first divergence at p0.layers.1.q`. Exposed by `cargo test --test parity`. Fixed with `git revert`.

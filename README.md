@@ -8,7 +8,7 @@ from scratch in Rust and compiled to WebAssembly. While it writes, you see the t
 heads, the neurons firing and the next-token probabilities. You can switch parts of it off and see
 what changes.
 
-Status: **M1**: tokenizer, PyTorch reference model, golden fixtures. Concepts: [docs/concepts](docs/concepts). See [docs/plan.md](docs/plan.md).
+Status: **M2**: Rust forward pass and tokenizer, matching PyTorch to 1e-4 in CI. Concepts: [docs/concepts](docs/concepts). See [docs/plan.md](docs/plan.md).
 
 ## Layout
 

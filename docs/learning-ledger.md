@@ -23,3 +23,9 @@ Concepts already confident in homelab-dev's or night-sky-digest's ledger are not
 | Golden fixtures, stage-by-stage parity | M1 | new | 2026-10-13 |  |
 | Float addition isn't associative; tolerances across machines | M1 | new | 2026-10-13 | CI Linux vs Windows: 1.6e-5 |
 | Init scale (std 0.02, residual scaled by depth) vs fixture weights | M1 | new | 2026-10-13 |  |
+| safetensors layout: u64 header length, JSON header, raw little-endian data | M2 | new | 2026-10-13 | reader validates offsets vs shape vs size |
+| Row-major layout, [out, in] Linear weights, contiguous dot products | M2 | new | 2026-10-13 |  |
+| Attention as loops: causal mask = loop bound, GQA = h / group | M2 | new | 2026-10-13 |  |
+| Numerically stable softmax (subtract the max) | M2 | new | 2026-10-13 | test feeds 1000s |
+| Stage-by-stage parity, first-divergence report | M2 | new | 2026-10-13 | lab: transposed q_proj -> layers.1.q |
+| Layout bugs on square matrices pass shape checks | M2 | new | 2026-10-13 | lab M2 |
