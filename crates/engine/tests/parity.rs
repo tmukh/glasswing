@@ -118,7 +118,7 @@ fn kv_cache_gives_the_same_logits_as_a_full_pass() {
         let mut session = Session::new(&model);
         let mut at = 0;
         for n in split {
-            let logits = session.run(&tokens[at..at + n], None).unwrap();
+            let logits = session.run(&model, &tokens[at..at + n], None).unwrap();
             for (r, row) in logits.chunks_exact(v).enumerate() {
                 let want = &full[(at + r) * v..][..v];
                 let diff = row
@@ -139,6 +139,6 @@ fn session_refuses_to_run_past_the_context() {
     let model = Model::from_safetensors(&read(fixtures().join("tiny/model.safetensors"))).unwrap();
     let mut session = Session::new(&model);
     let max = model.config.max_seq_len;
-    session.run(&vec![1; max], None).unwrap();
-    assert!(session.run(&[1], None).is_err());
+    session.run(&model, &vec![1; max], None).unwrap();
+    assert!(session.run(&model, &[1], None).is_err());
 }

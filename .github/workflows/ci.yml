@@ -34,3 +34,37 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest
+
+  # The browser build: bundle it, hold it to a size budget, and check that wasm and native
+  # generate the same greedy text (catches wasm-only bugs, e.g. in the SIMD path).
+  web:
+    runs-on: ubuntu-24.04
+    env:
+      WASM_BINDGEN: "0.2.129" # must match the wasm-bindgen crate in Cargo.lock
+      WASM_BINDGEN_SHA256: 82d12bb940e2d4e72e0d5605387fc1b8ca179044e012b620f0ce4e7440e8320e
+      WASM_BUDGET_BYTES: "409600" # 400 KB
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.12"
+      - name: Install wasm-bindgen (pinned, checksum verified)
+        run: |
+          f="wasm-bindgen-${WASM_BINDGEN}-x86_64-unknown-linux-musl"
+          curl -sSfL -o "$f.tar.gz" \
+            "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${WASM_BINDGEN}/$f.tar.gz"
+          echo "${WASM_BINDGEN_SHA256}  $f.tar.gz" | sha256sum -c -
+          tar xzf "$f.tar.gz"
+          echo "$PWD/$f" >> "$GITHUB_PATH"
+      - run: sh scripts/build-web.sh
+      - name: Size budget
+        run: |
+          size=$(stat -c %s web/pkg/glasswing_wasm_bg.wasm)
+          echo "wasm: $size bytes (budget $WASM_BUDGET_BYTES)"
+          test "$size" -le "$WASM_BUDGET_BYTES"
+      - name: wasm and native agree
+        run: |
+          cargo build --release -p glasswing-cli
+          ./target/release/glasswing --model fixtures/tiny/model.safetensors \
+            --temperature 0 --max-tokens 100 > native.txt
+          node web/bench.mjs fixtures/tiny/model.safetensors native.txt

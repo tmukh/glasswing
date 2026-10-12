@@ -13,3 +13,4 @@ checkpoints/
 *.safetensors
 !fixtures/**/*.safetensors
 *.log
+web/pkg/

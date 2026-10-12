@@ -102,7 +102,9 @@ fn run() -> Result<(), String> {
     // Prefill: the whole prompt in one call.
     let prompt_len = tokens.len();
     let t0 = Instant::now();
-    let logits = session.run(&tokens, None).map_err(|e| e.to_string())?;
+    let logits = session
+        .run(&model, &tokens, None)
+        .map_err(|e| e.to_string())?;
     let mut next = sampler.sample(&logits[logits.len() - v..]);
     let prefill = t0.elapsed();
 
@@ -126,7 +128,9 @@ fn run() -> Result<(), String> {
             let all = model.forward(&tokens, None).map_err(|e| e.to_string())?;
             all[all.len() - v..].to_vec()
         } else {
-            session.run(&[next], None).map_err(|e| e.to_string())?
+            session
+                .run(&model, &[next], None)
+                .map_err(|e| e.to_string())?
         };
         next = sampler.sample(&logits);
     }
@@ -134,11 +138,12 @@ fn run() -> Result<(), String> {
     writeln!(out).unwrap();
 
     if args.bench {
-        let weights_mb = std::fs::metadata(&args.model).map(|m| m.len()).unwrap_or(0) as f64 / 1e6;
+        // Weights are f32 in memory even when the file is f16: 4 bytes read per weight per token.
+        let weights_mb = model.num_params() as f64 * 4.0 / 1e6;
         let tps = generated as f64 / decode.as_secs_f64();
         println!(
             "prompt {} tokens in {:.1} ms; generated {generated} tokens in {:.0} ms: \
-             {tps:.1} tokens/s ({}), weights {weights_mb:.0} MB -> {:.1} GB/s of weight reads",
+             {tps:.1} tokens/s ({}), {weights_mb:.0} MB of f32 weights -> {:.1} GB/s of weight reads",
             prompt_len,
             prefill.as_secs_f64() * 1e3,
             decode.as_secs_f64() * 1e3,

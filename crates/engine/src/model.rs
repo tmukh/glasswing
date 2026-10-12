@@ -120,29 +120,49 @@ impl Model {
         })
     }
 
+    /// Number of weights (the tied embedding counted once).
+    pub fn num_params(&self) -> usize {
+        let per_layer: usize = self
+            .layers
+            .iter()
+            .map(|l| {
+                l.attn_norm.len()
+                    + l.wq.len()
+                    + l.wk.len()
+                    + l.wv.len()
+                    + l.wo.len()
+                    + l.mlp_norm.len()
+                    + l.w_gate.len()
+                    + l.w_up.len()
+                    + l.w_down.len()
+            })
+            .sum();
+        self.embed.len() + self.norm.len() + per_layer
+    }
+
     /// Run a whole sequence from scratch and return logits `[T, V]`, row t = scores for the token
     /// after t. With `trace`, every intermediate tensor is recorded under the same names as the
     /// Python reference.
     pub fn forward(&self, tokens: &[u32], trace: Option<&mut Trace>) -> Result<Vec<f32>> {
-        Session::new(self).run(tokens, trace)
+        Session::new(self).run(self, tokens, trace)
     }
 }
 
-/// One generation in progress: the model plus the KV cache for the tokens seen so far.
-pub struct Session<'m> {
-    model: &'m Model,
+/// One generation in progress: the KV cache for the tokens seen so far. It doesn't hold the
+/// model, so an owner (the browser engine) can keep both side by side; pass the same model to
+/// every `run`.
+pub struct Session {
     /// Per layer: keys and values for positions `0..pos`, row-major `[max_seq_len, K*Hd]`.
     k_cache: Vec<Vec<f32>>,
     v_cache: Vec<Vec<f32>>,
     pos: usize,
 }
 
-impl<'m> Session<'m> {
-    pub fn new(model: &'m Model) -> Self {
+impl Session {
+    pub fn new(model: &Model) -> Self {
         let c = &model.config;
         let size = c.max_seq_len * c.n_kv_heads * c.head_dim();
         Session {
-            model,
             k_cache: vec![vec![0.0; size]; c.n_layers],
             v_cache: vec![vec![0.0; size]; c.n_layers],
             pos: 0,
@@ -160,10 +180,19 @@ impl<'m> Session<'m> {
 
     /// Process `tokens` as positions `pos..pos+n`, append their keys and values to the cache, and
     /// return logits `[n, V]`. Attention reads the cache, so earlier tokens are never recomputed.
-    pub fn run(&mut self, tokens: &[u32], mut trace: Option<&mut Trace>) -> Result<Vec<f32>> {
-        let m = self.model;
+    pub fn run(
+        &mut self,
+        model: &Model,
+        tokens: &[u32],
+        mut trace: Option<&mut Trace>,
+    ) -> Result<Vec<f32>> {
+        let m = model;
         let c = &m.config;
         let (n, d) = (tokens.len(), c.dim);
+        let cache_len = c.max_seq_len * c.n_kv_heads * c.head_dim();
+        if self.k_cache.len() != c.n_layers || self.k_cache[0].len() != cache_len {
+            bail!("run: this session was created for a different model");
+        }
         if n == 0 || self.pos + n > c.max_seq_len {
             bail!(
                 "run: {n} new tokens at position {}, context is {}",
@@ -184,7 +213,7 @@ impl<'m> Session<'m> {
         record(&mut trace, "embed", &[n, d], &x);
 
         for i in 0..m.layers.len() {
-            x = self.block(i, x, n, &mut trace);
+            x = self.block(m, i, x, n, &mut trace);
         }
         self.pos += n;
 
@@ -198,12 +227,12 @@ impl<'m> Session<'m> {
 
     fn block(
         &mut self,
+        m: &Model,
         i: usize,
         mut x: Vec<f32>,
         n: usize,
         trace: &mut Option<&mut Trace>,
     ) -> Vec<f32> {
-        let m = self.model;
         let l = &m.layers[i];
         let c = &m.config;
         let (d, hd, f) = (c.dim, c.head_dim(), c.hidden_dim);
