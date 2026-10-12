@@ -64,7 +64,8 @@ def rope_cos_sin(cfg: ModelConfig, positions: torch.Tensor) -> tuple[torch.Tenso
     see fine position differences, the last pairs spin slowly and see long distances.
     """
     hd = cfg.head_dim
-    inv_freq = 1.0 / (cfg.rope_theta ** (torch.arange(0, hd, 2, dtype=torch.float32) / hd))
+    exponents = torch.arange(0, hd, 2, dtype=torch.float32, device=positions.device) / hd
+    inv_freq = 1.0 / (cfg.rope_theta**exponents)
     angles = positions.float()[:, None] * inv_freq[None, :]  # [T, Hd/2]
     angles = torch.cat([angles, angles], dim=-1)  # [T, Hd]: pair i is (i, i + Hd/2)
     return angles.cos(), angles.sin()
@@ -197,7 +198,6 @@ class Transformer(nn.Module):
         assert T <= self.cfg.max_seq_len
         positions = torch.arange(T, device=tokens.device)
         cos, sin = rope_cos_sin(self.cfg, positions)
-        cos, sin = cos.to(tokens.device), sin.to(tokens.device)
 
         x = self.model.embed_tokens(tokens)
         if trace is not None:

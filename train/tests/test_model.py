@@ -115,6 +115,8 @@ def expected():
 
 def test_golden_fixtures_are_current(expected):
     # The committed fixtures must match what this model code computes from the committed weights.
+    # Tolerance 1e-4, not 1e-5: float addition isn't associative, and different CPUs/BLAS kernels
+    # sum dot products in different orders (CI on Linux differed from Windows by 1.6e-5).
     # If this fails after a deliberate model change, regenerate with
     # `uv run python -m glasswing_train.fixtures` and say why in the commit.
     tensors, prompts = expected
@@ -128,7 +130,7 @@ def test_golden_fixtures_are_current(expected):
             torch.testing.assert_close(
                 t[0],
                 tensors[f"p{i}.{name}"],
-                rtol=1e-5,
-                atol=1e-5,
+                rtol=1e-4,
+                atol=1e-4,
                 msg=lambda m, n=f"p{i}.{name}": f"{n}: {m}",
             )
