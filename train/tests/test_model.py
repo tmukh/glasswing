@@ -45,6 +45,16 @@ def test_rope_score_depends_only_on_distance():
     assert not torch.allclose(score(5, 2), score(5, 4), atol=1e-3)
 
 
+def test_fast_attention_matches_explicit():
+    # forward() without a trace uses PyTorch's fused attention; with a trace, our explicit code.
+    model = random_tiny_model()
+    tokens = torch.randint(0, TINY.vocab_size, (2, 20))
+    with torch.no_grad():
+        fast = model(tokens)
+        explicit = model(tokens, trace={})
+    torch.testing.assert_close(fast, explicit, rtol=1e-4, atol=1e-4)
+
+
 def test_rope_preserves_length():
     cos, sin = rope_cos_sin(SMALL, torch.arange(10))
     x = torch.randn(1, 2, 10, SMALL.head_dim)

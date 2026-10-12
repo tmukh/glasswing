@@ -7,11 +7,13 @@ mod error;
 pub mod model;
 pub mod ops;
 pub mod safetensors;
+pub mod sample;
 pub mod tokenizer;
 pub mod trace;
 
 pub use error::{Error, Result};
-pub use model::{Config, Model};
+pub use model::{Config, Model, Session};
+pub use sample::Sampler;
 pub use tokenizer::Tokenizer;
 pub use trace::Trace;
 
