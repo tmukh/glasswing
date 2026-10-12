@@ -88,7 +88,15 @@ impl Model {
             let p = format!("model.layers.{i}.");
             layers.push(Layer {
                 attn_norm: get(&format!("{p}input_layernorm.weight"), &[d])?,
-                wq: get(&format!("{p}self_attn.q_proj.weight"), &[c.n_heads * hd, d])?,
+                // LAB: layer 1's q_proj loaded transposed (square, so the shape check passes)
+                wq: {
+                    let w = get(&format!("{p}self_attn.q_proj.weight"), &[c.n_heads * hd, d])?;
+                    if i == 1 {
+                        (0..d * d).map(|j| w[(j % d) * d + j / d]).collect()
+                    } else {
+                        w
+                    }
+                },
                 wk: get(
                     &format!("{p}self_attn.k_proj.weight"),
                     &[c.n_kv_heads * hd, d],
