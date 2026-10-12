@@ -1,0 +1,35 @@
+# glasswing
+
+A small language model you can watch think.
+
+glasswing is a Llama-style transformer (~15M parameters) trained on
+[TinyStories](https://arxiv.org/abs/2305.07759), running in the browser on an inference engine written
+from scratch in Rust and compiled to WebAssembly. While it writes, you see the tokens, the attention
+heads, the neurons firing and the next-token probabilities. You can switch parts of it off and see
+what changes.
+
+Status: **M0**, the scaffold. See [docs/plan.md](docs/plan.md).
+
+## Layout
+
+| Path | What |
+|---|---|
+| `crates/engine` | The model: forward pass, sampling, activation traces. No ML framework. |
+| `crates/wasm` | Thin wasm-bindgen layer for the browser. |
+| `train/` | Tokenizer, PyTorch reference model, training, export to safetensors. |
+| `docs/` | Plan, ADRs, learning ledger, log. |
+
+## Develop
+
+```sh
+cargo test --workspace
+cargo build -p glasswing-wasm --target wasm32-unknown-unknown --release
+
+cd train
+uv sync
+uv run pytest
+```
+
+## Licence
+
+MIT. Trained weights carry the dataset's licence terms too; see ADR 0001.

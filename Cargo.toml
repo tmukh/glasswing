@@ -1,0 +1,15 @@
+[workspace]
+resolver = "3"
+members = ["crates/engine", "crates/wasm"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/tmukh/glasswing"
+authors = ["Tarik Abu Mukh"]
+
+[profile.release]
+# The wasm build ships to every visitor: smaller beats faster to compile.
+lto = true
+codegen-units = 1

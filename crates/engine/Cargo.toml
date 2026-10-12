@@ -1,0 +1,10 @@
+[package]
+name = "glasswing-engine"
+description = "A small Llama-style transformer, written from scratch, that reports what happens inside it"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]

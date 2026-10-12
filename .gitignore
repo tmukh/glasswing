@@ -1,0 +1,14 @@
+/target/
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Datasets, checkpoints and exported weights are large and rebuilt from scripts.
+# Small golden fixtures for the parity test live in fixtures/ and are committed.
+data/
+checkpoints/
+*.safetensors
+!fixtures/**/*.safetensors
