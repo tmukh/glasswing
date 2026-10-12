@@ -59,13 +59,13 @@ jobs:
 
       - name: Smoke test
         run: |
-          docker run -d --name s -p 8080:8080 "$IMAGE:$TAG"
+          docker run -d --name glasswing-smoke -p 8080:8080 "$IMAGE:$TAG"
           for i in $(seq 60); do curl -sf localhost:8080/healthz && break; sleep 1; done
           curl -sfN localhost:8080/v1/generate -H 'content-type: application/json' \
             -d '{"model":"smollm2","prompt":"What is the capital of France?","max_tokens":12,"temperature":0}' \
             | tee out.txt
           grep -q Paris out.txt
-          docker logs s
+          docker logs glasswing-smoke
 
       - name: Push
         if: github.event_name == 'push'
