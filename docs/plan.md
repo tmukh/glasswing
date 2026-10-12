@@ -30,6 +30,22 @@ explains what broke. The ledger stays honest: a concept moves past **new** only 
 | M6 | Interpretability controls: **ablate** a head or neuron, **logit lens**, **activation patching**. Find one circuit (e.g. an induction head or a name-copying head) and write it up | mechanistic interpretability, evaluation | the ablation experiment and the write-up |
 | M7 (stretch) | Same engine loads a real small model (SmolLM-135M); native build served on k3s with Prometheus metrics (tokens/s, time to first token) | serving, SRE | — |
 
+## Decisions for M4–M7 (2026-10-13)
+
+Tarik delegated M4–M7 to run without check-ins (Claude merges its own PRs when CI is green and deploys
+through homelab-dev), with these answers:
+- **Weights hosting (M4):** f16 weights as a GitHub Release asset of this repo; the takodana.dev build
+  downloads them and checks the sha256. Served by the site itself.
+- **Visualization (M5):** follow the visual language of the established LLM visualizations (Bycroft's
+  3D LLM viz, Transformer Explainer, attribution graphs), with our own code and drawings; match the
+  site's space theme. Public on takodana.dev.
+- **Write-up (M6):** published on takodana.dev under Tarik's name, with one honest line: built with
+  Claude Code as a pair programmer; Tarik directed the design, reviewed the code and ran the experiments.
+- **Serving (M7):** public at **glasswing.takodana.dev**, no login. Abuse protection in the app: per-IP
+  rate limit, max 256 new tokens per request, at most 2 concurrent generations, request timeout.
+  Model: SmolLM2-135M (Apache-2.0) plus glasswing. The D:\dev\CLAUDE.md public-apps rule is updated in
+  the same PR that opens the hostname.
+
 ## Break-it lab ideas
 
 - **M1:** drop the causal mask during training. Prediction: loss falls suspiciously fast, because the model
