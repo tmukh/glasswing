@@ -108,7 +108,7 @@ class Attention(nn.Module):
         scores = q @ k_rep.transpose(-2, -1) / math.sqrt(hd)  # [B, H, T, T]
         # Causal mask: position t may only look at positions <= t.
         future = torch.triu(torch.ones(T, T, dtype=torch.bool, device=x.device), diagonal=1)
-        # LAB: mask removed
+        scores = scores.masked_fill(future, float("-inf"))
         weights = F.softmax(scores, dim=-1)
         out = weights @ v_rep  # [B, H, T, Hd]: a weighted average of values
         out = out.transpose(1, 2).reshape(B, T, cfg.n_heads * hd)
