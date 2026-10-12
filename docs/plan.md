@@ -9,11 +9,19 @@ a visitor switch parts of it off and see what changes.
 Definition of done for every milestone: merged to main, CI green, deployed where there is something to
 deploy (from M4 on), a line in CAREER-PLAN.md's progress log, and the ledger updated.
 
+## How we work on this project (decided 2026-10-13)
+
+Different from the default tutor mode in D:\dev\CLAUDE.md: **Claude writes the code**, including the core
+pieces. In return, every milestone opens with an explanation of each new concept (what it is, why it
+exists, how it maps to the code) and closes with a walk-through of how the code we wrote works. No
+prediction prompts, no mandatory quiz; I can ask for either. Break-it labs stay, Claude drives them and
+explains what broke. The ledger stays honest: a concept moves past **new** only when I explain it back.
+
 ## Milestones
 
-| M | Deliverable | Gaps it closes | Core piece I write |
+| M | Deliverable | Gaps it closes | Core piece (explained in depth) |
 |---|---|---|---|
-| M0 | Cargo workspace (engine + wasm crates), uv training project, CI (fmt, clippy, tests, wasm build, ruff, pytest), ADR 0001 | Rust project hygiene | — (boilerplate) |
+| M0 ✅ | Cargo workspace (engine + wasm crates), uv training project, CI (fmt, clippy, tests, wasm build, ruff, pytest), ADR 0001 | Rust project hygiene | — (boilerplate) |
 | M1 | Tokenizer: BPE (vocab 4096) trained on TinyStories; PyTorch reference model (RMSNorm, RoPE, SwiGLU); export to safetensors; **golden fixtures**: a tiny random-init model plus its logits and per-layer activations for fixed prompts | tokenization, transformer architecture | the BPE merge loop |
 | M2 | Rust forward pass, no ML framework: load safetensors, embeddings → blocks → logits. **Parity test in CI**: Rust matches PyTorch to 1e-4 on the fixtures | transformer internals, numerics | causal self-attention (scores, mask, softmax, weighted sum) |
 | M3 | Train the real model (~15M params) on the 3060 Ti; validation loss and sample quality written up. Rust: KV cache, sampling (temperature, top-p), a CLI, tokens/s benchmark | training, inference performance | the KV cache |

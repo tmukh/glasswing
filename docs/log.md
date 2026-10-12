@@ -7,3 +7,7 @@ and the command that exposed it.
 
 Created the repo. Wrote the plan and ADR 0001 (TinyStories, Llama-style ~15M, Rust engine, safetensors).
 M0 scaffold: Cargo workspace, uv training project, CI.
+
+M0 shipped: public repo github.com/tmukh/glasswing, CI green (rust: fmt, clippy, test, wasm32 build;
+python: ruff, pytest), `rust` and `python` required on main. Working mode for this project: Claude
+writes the code and explains every concept (see plan.md).
