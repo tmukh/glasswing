@@ -219,8 +219,10 @@ impl<'m> Session<'m> {
         let mut k = linear(&h, &l.wk, n, d, nkv * hd); // [n, K*Hd]
         let v = linear(&h, &l.wv, n, d, nkv * hd); // [n, K*Hd]
         // Rotate by each token's absolute position, not its index in this call.
-        apply_rope(&mut q, nh, hd, &m.rope_cos, &m.rope_sin, start);
-        apply_rope(&mut k, nkv, hd, &m.rope_cos, &m.rope_sin, start);
+        // LAB: off by one when decoding a single token through the cache
+        let rope_start = if n == 1 { start + 1 } else { start };
+        apply_rope(&mut q, nh, hd, &m.rope_cos, &m.rope_sin, rope_start);
+        apply_rope(&mut k, nkv, hd, &m.rope_cos, &m.rope_sin, rope_start);
         if trace.is_some() {
             // The reference traces per head: [heads, n, Hd].
             record(trace, &name("q"), &[nh, n, hd], &heads_first(&q, n, nh, hd));
