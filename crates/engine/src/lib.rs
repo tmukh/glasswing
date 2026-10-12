@@ -4,6 +4,8 @@
 //! logits) can be recorded in a [`Trace`], so the browser can draw it.
 
 mod error;
+#[cfg(feature = "hf")]
+pub mod hf_tokenizer;
 pub mod model;
 pub mod ops;
 pub mod safetensors;

@@ -1,0 +1,22 @@
+[package]
+name = "glasswing-server"
+description = "HTTP API serving glasswing and SmolLM2 on the glasswing engine, with rate limits and metrics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "glasswing-server"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8"
+glasswing-engine = { path = "../engine", features = ["hf", "parallel"] }
+prometheus = "0.14"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time", "sync"] }
+tokio-stream = "0.1"
+tower-http = { version = "0.6", features = ["cors"] }

@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>glasswing · live models</title>
+<meta name="description" content="SmolLM2-135M and glasswing, running on a from-scratch Rust inference engine on a homelab Kubernetes cluster.">
+<style>
+  :root { --ground:#070a14; --surface:#0d1222; --ink:#e6e9f2; --ink2:#b9c0d4; --muted:#8c96b2;
+          --line:#1e2640; --line2:#34405f; --accent:#9db4ff; --star:#ffd27a; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; background:var(--ground); color:var(--ink);
+         font:17px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 48px 16px 64px; }
+  h1 { font-size: clamp(30px, 5vw, 44px); line-height:1.1; margin: 0 0 10px; letter-spacing:-0.02em; }
+  p.lede { color: var(--ink2); margin: 0 0 24px; }
+  a { color: var(--accent); }
+  .tabs { display:flex; gap:8px; margin: 0 0 14px; flex-wrap: wrap; }
+  .tabs button { font:inherit; font-size:14px; color:var(--ink2); background:transparent; border:1px solid var(--line2);
+                 border-radius:8px; padding:6px 12px; cursor:pointer; }
+  .tabs button[aria-pressed="true"] { background:var(--accent); color:var(--ground); border-color:var(--accent); }
+  #log { display:flex; flex-direction:column; gap:12px; margin-bottom: 14px; }
+  .msg { padding: 12px 16px; border-radius: 10px; border:1px solid var(--line); background:var(--surface);
+         white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.user { border-color: var(--line2); background: transparent; align-self: flex-end; max-width: 85%; }
+  .msg .who { display:block; font: 12px ui-monospace, monospace; color: var(--muted); margin-bottom: 4px; }
+  .msg .stats { display:block; font: 12px ui-monospace, monospace; color: var(--muted); margin-top: 8px; }
+  form { display:flex; gap:10px; }
+  textarea { flex:1; font:inherit; color:var(--ink); background:var(--surface); border:1px solid var(--line2);
+             border-radius:10px; padding:10px 12px; resize: vertical; min-height: 48px; }
+  button.send { font:inherit; font-weight:600; color:var(--ground); background:var(--star); border:0;
+                border-radius:10px; padding:0 18px; cursor:pointer; }
+  button.send:disabled { opacity: .5; cursor: default; }
+  .note { font-size: 14px; color: var(--muted); margin-top: 18px; }
+  .err { color: #ff9d8a; }
+</style>
+</head>
+<body>
+<main>
+  <h1>glasswing · live models</h1>
+  <p class="lede">Two small language models running on an inference engine written from scratch in Rust, served from a
+    single-node Kubernetes cluster at home. Slow on purpose: no GPU, no batching, just the CPU.
+    <a href="https://takodana.dev/projects/glasswing/">How it works</a>.</p>
+  <div class="tabs" role="group" aria-label="Model">
+    <button type="button" data-model="smollm2" aria-pressed="true">SmolLM2-135M chat</button>
+    <button type="button" data-model="glasswing" aria-pressed="false">glasswing story (15.7M)</button>
+  </div>
+  <div id="log" aria-live="polite"></div>
+  <form id="f">
+    <textarea id="q" rows="2" maxlength="2000" placeholder="Ask SmolLM2 something short…" required></textarea>
+    <button class="send" id="send">Send</button>
+  </form>
+  <p class="note">No login and no logging of what you write, so there are limits: a few requests a minute per visitor,
+    up to 256 tokens per answer, two answers at a time across everyone. SmolLM2-135M is
+    <a href="https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct">Hugging Face's</a> (Apache-2.0) and is tiny:
+    expect confident nonsense. glasswing only knows children's stories.</p>
+</main>
+<script>
+  let model = "smollm2";
+  const history = [];
+  const log = document.getElementById("log");
+  const q = document.getElementById("q");
+  const send = document.getElementById("send");
+
+  document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
+    model = b.dataset.model;
+    document.querySelectorAll(".tabs button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    q.placeholder = model === "smollm2" ? "Ask SmolLM2 something short…" : "Start a story: Once upon a time…";
+    history.length = 0;
+    log.textContent = "";
+  }));
+
+  function bubble(role, text) {
+    const d = document.createElement("div");
+    d.className = "msg " + role;
+    const who = document.createElement("span");
+    who.className = "who";
+    who.textContent = role === "user" ? "you" : model;
+    const body = document.createElement("span");
+    body.textContent = text;
+    d.append(who, body);
+    log.append(d);
+    return { d, body };
+  }
+
+  document.getElementById("f").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = q.value.trim();
+    if (!text) return;
+    q.value = "";
+    send.disabled = true;
+    bubble("user", text);
+    const out = bubble("assistant", model === "glasswing" ? text : "");
+    const body = model === "smollm2"
+      ? { model, messages: [...history, { role: "user", content: text }], max_tokens: 200 }
+      : { model, prompt: text, max_tokens: 200, temperature: 0.8 };
+    let answer = "";
+    try {
+      const res = await fetch("/v1/generate", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || `HTTP ${res.status}`);
+      }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let i;
+        while ((i = buf.indexOf("\n\n")) >= 0) {
+          const block = buf.slice(0, i);
+          buf = buf.slice(i + 2);
+          const ev = /^event: (.*)$/m.exec(block)?.[1] ?? "message";
+          const data = /^data: (.*)$/m.exec(block)?.[1];
+          if (!data) continue;
+          const j = JSON.parse(data);
+          if (ev === "message") { answer += j.text; out.body.textContent += j.text; }
+          else if (ev === "done") {
+            const s = document.createElement("span");
+            s.className = "stats";
+            s.textContent = `${j.tokens} tokens · first token ${j.ttft_ms} ms · ${j.tokens_per_s} tokens/s · ${j.reason}`;
+            out.d.append(s);
+          } else if (ev === "error") throw new Error(j.error);
+        }
+      }
+      if (model === "smollm2") history.push({ role: "user", content: text }, { role: "assistant", content: answer });
+      while (history.length > 8) history.shift();
+    } catch (err) {
+      const s = document.createElement("span");
+      s.className = "stats err";
+      s.textContent = String(err.message || err);
+      out.d.append(s);
+    } finally {
+      send.disabled = false;
+      q.focus();
+    }
+  });
+  q.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); document.getElementById("f").requestSubmit(); }
+  });
+</script>
+</body>
+</html>

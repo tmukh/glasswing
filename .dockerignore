@@ -1,0 +1,10 @@
+# Only the source the server build needs. Models come in through pinned downloads.
+target/
+data/
+checkpoints/
+web/
+train/
+fixtures/
+docs/
+*.log
+.git/

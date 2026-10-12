@@ -31,6 +31,29 @@ pub struct Config {
     pub norm_eps: f32,
 }
 
+/// The fields of a Hugging Face `config.json` we need (Llama architecture).
+#[derive(Deserialize)]
+struct HfConfig {
+    model_type: String,
+    hidden_act: String,
+    hidden_size: usize,
+    intermediate_size: usize,
+    num_hidden_layers: usize,
+    num_attention_heads: usize,
+    num_key_value_heads: Option<usize>,
+    vocab_size: usize,
+    max_position_embeddings: usize,
+    rope_theta: f32,
+    rms_norm_eps: f32,
+    #[serde(default)]
+    tie_word_embeddings: bool,
+    #[serde(default)]
+    attention_bias: bool,
+    #[serde(default)]
+    mlp_bias: bool,
+    rope_scaling: Option<serde_json::Value>,
+}
+
 impl Config {
     pub fn head_dim(&self) -> usize {
         self.dim / self.n_heads
@@ -51,7 +74,8 @@ struct Layer {
 
 pub struct Model {
     pub config: Config,
-    embed: Vec<f32>, // [V, D], also the output projection (tied)
+    embed: Vec<f32>,          // [V, D], also the output projection when tied
+    output: Option<Vec<f32>>, // [V, D] for models with a separate output layer
     layers: Vec<Layer>,
     norm: Vec<f32>, // [D]
     rope_cos: Vec<f32>,
@@ -59,7 +83,8 @@ pub struct Model {
 }
 
 impl Model {
-    /// Load from the bytes of a `.safetensors` file written by `glasswing_train.export`.
+    /// Load from the bytes of a `.safetensors` file written by `glasswing_train.export`
+    /// (config in the header's metadata).
     pub fn from_safetensors(bytes: &[u8]) -> Result<Self> {
         let st = SafeTensors::parse(bytes)?;
         if st.metadata().get("format").map(String::as_str) != Some(FORMAT) {
@@ -70,8 +95,48 @@ impl Model {
         };
         let config: Config = serde_json::from_str(config_json)
             .map_err(|e| crate::error::Error(format!("model: bad config: {e}")))?;
+        Self::from_parts(config, &st)
+    }
+
+    /// Load a Hugging Face Llama-architecture checkpoint (e.g. SmolLM2): its `config.json` and
+    /// `model.safetensors`. `max_seq_len` caps the context, which sizes the KV cache.
+    pub fn from_hf(config_json: &str, weights: &[u8], max_seq_len: usize) -> Result<Self> {
+        let hf: HfConfig = serde_json::from_str(config_json)
+            .map_err(|e| crate::error::Error(format!("model: bad config.json: {e}")))?;
+        if hf.model_type != "llama" || hf.hidden_act != "silu" {
+            bail!("model: only Llama-style models with SiLU are supported");
+        }
+        if hf.attention_bias || hf.mlp_bias || hf.rope_scaling.is_some_and(|v| !v.is_null()) {
+            bail!("model: biases and RoPE scaling are not supported");
+        }
+        let config = Config {
+            vocab_size: hf.vocab_size,
+            dim: hf.hidden_size,
+            n_layers: hf.num_hidden_layers,
+            n_heads: hf.num_attention_heads,
+            n_kv_heads: hf.num_key_value_heads.unwrap_or(hf.num_attention_heads),
+            hidden_dim: hf.intermediate_size,
+            max_seq_len: max_seq_len.min(hf.max_position_embeddings),
+            rope_theta: hf.rope_theta,
+            norm_eps: hf.rms_norm_eps,
+        };
+        let st = SafeTensors::parse(weights)?;
+        let mut model = Self::from_parts(config, &st)?;
+        if !hf.tie_word_embeddings {
+            let (shape, w) = st.f32("lm_head.weight")?;
+            if shape != [model.config.vocab_size, model.config.dim] {
+                bail!("model: lm_head.weight has shape {shape:?}");
+            }
+            model.output = Some(w);
+        }
+        Ok(model)
+    }
+
+    fn from_parts(config: Config, st: &SafeTensors) -> Result<Self> {
         let c = &config;
-        if !c.dim.is_multiple_of(c.n_heads)
+        if c.n_heads == 0
+            || c.n_kv_heads == 0
+            || !c.dim.is_multiple_of(c.n_heads)
             || !c.n_heads.is_multiple_of(c.n_kv_heads)
             || !c.head_dim().is_multiple_of(2)
         {
@@ -113,6 +178,7 @@ impl Model {
         Ok(Model {
             embed: get("model.embed_tokens.weight", &[c.vocab_size, d])?,
             norm: get("model.norm.weight", &[d])?,
+            output: None,
             layers,
             rope_cos,
             rope_sin,
@@ -137,7 +203,7 @@ impl Model {
                     + l.w_down.len()
             })
             .sum();
-        self.embed.len() + self.norm.len() + per_layer
+        self.embed.len() + self.norm.len() + self.output.as_ref().map_or(0, Vec::len) + per_layer
     }
 
     /// Run a whole sequence from scratch and return logits `[T, V]`, row t = scores for the token
@@ -220,7 +286,8 @@ impl Session {
         let x = rmsnorm(&x, &m.norm, c.norm_eps);
         record(&mut trace, "final_norm", &[n, d], &x);
         // Tied embeddings: logit for token v = final stream · embedding row v.
-        let logits = linear(&x, &m.embed, n, d, c.vocab_size);
+        let out_w = m.output.as_deref().unwrap_or(&m.embed);
+        let logits = linear(&x, out_w, n, d, c.vocab_size);
         record(&mut trace, "logits", &[n, c.vocab_size], &logits);
         Ok(logits)
     }

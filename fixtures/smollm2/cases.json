@@ -1,0 +1,17 @@
+[
+ {"text": "", "ids": [], "decoded": ""},
+ {"text": "Hello, world!", "ids": [19556, 28, 905, 17], "decoded": "Hello, world!"},
+ {"text": "The year 2026 had 365 days; π ≈ 3.14159.", "ids": [504, 713, 216, 34, 32, 34, 38, 761, 216, 35, 38, 37, 2009, 43, 25143, 21004, 226, 216, 35, 30, 33, 36, 33, 37, 41, 30], "decoded": "The year 2026 had 365 days; π ≈ 3.14159."},
+ {"text": "  two leading spaces, and trailing  ", "ids": [216, 827, 2899, 5600, 28, 284, 35079, 256], "decoded": "  two leading spaces, and trailing  "},
+ {"text": "I'm sure they'll say it's John's, we've seen it, he'd know.", "ids": [57, 5248, 2090, 502, 3060, 1643, 357, 506, 2322, 506, 28, 392, 3543, 2269, 357, 28, 384, 6737, 699, 30], "decoded": "I'm sure they'll say it's John's, we've seen it, he'd know."},
+ {"text": "Tabs\tand\r\nnewlines\n\n\nthree", "ids": [68, 7366, 197, 397, 201, 198, 2241, 5110, 1116, 198, 16347], "decoded": "Tabs\tand\r\nnewlines\n\n\nthree"},
+ {"text": "café naïve Zoë Ærøskøbing", "ids": [83, 1939, 2756, 15486, 46494, 26336, 26547, 44741, 98, 21817, 5746, 21817, 7519], "decoded": "café naïve Zoë Ærøskøbing"},
+ {"text": "Привет, мир! مرحبا بالعالم ١٢٣ שלום", "ids": [155, 249, 46879, 16464, 32547, 28, 41337, 7872, 9175, 17, 36395, 20602, 44626, 31462, 10805, 45726, 22208, 34966, 22208, 21706, 216, 164, 111, 164, 112, 164, 113, 12960, 119, 31838, 23970, 162, 247], "decoded": "Привет, мир! مرحبا بالعالم ١٢٣ שלום"},
+ {"text": "日本語のテキストと漢字", "ids": [23274, 115, 40993, 179, 120, 248, 26453, 11100, 224, 10391, 251, 10391, 134, 11100, 226, 7365, 118, 177, 137, 112, 36518], "decoded": "日本語のテキストと漢字"},
+ {"text": "emoji 🐶🚀 and ZWJ 👩‍💻", "ids": [391, 33777, 15107, 234, 131, 10813, 244, 218, 284, 1777, 71, 58, 15107, 235, 119, 321, 231, 10813, 236, 136], "decoded": "emoji 🐶🚀 and ZWJ 👩‍💻"},
+ {"text": "superscript² roman Ⅻ fraction ½", "ids": [35375, 366, 4818, 19133, 41800, 216, 173, 223, 121, 10236, 216, 16738], "decoded": "superscript² roman Ⅻ fraction ½"},
+ {"text": "<|im_start|>user\nWhat is 2+2?<|im_end|>\n<|im_start|>assistant\n", "ids": [1, 4093, 198, 1780, 314, 216, 34, 27, 34, 47, 2, 198, 1, 520, 9531, 198], "decoded": "<|im_start|>user\nWhat is 2+2?<|im_end|>\n<|im_start|>assistant\n"},
+ {"text": "text<|im_end|>more<|endoftext|>", "ids": [2692, 2, 3143, 0], "decoded": "text<|im_end|>more<|endoftext|>"},
+ {"text": "def f(x):\n    return x ** 2  # square", "ids": [1604, 275, 24, 104, 727, 472, 1003, 1792, 1903, 216, 34, 216, 907, 5222], "decoded": "def f(x):\n    return x ** 2  # square"},
+ {"text": "control\u0004char\u0000s", "ids": [11656, 9061, 190, 99], "decoded": "controlchar\u0000s"}
+]
