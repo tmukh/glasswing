@@ -2,7 +2,8 @@
 //
 // Messages in:
 //   {type: "load", base}                    fetch base/glasswing_wasm_bg.wasm, model.bin, tokenizer.json
-//   {type: "generate", prompt, maxTokens, temperature, topP, seed}
+//   {type: "generate", prompt, maxTokens, temperature, topP, seed, lens, ablateHeads, ablateNeurons}
+//     lens: compute the logit lens; ablate*: flat [layer, index, ...] pairs to switch off
 //   {type: "stop"}
 // Messages out:
 //   {type: "progress", loaded, total}       weights download progress (bytes)
@@ -63,7 +64,10 @@ function send(step, isPrompt) {
     resid: step.resid(),
     topIds: step.top_ids(),
     topProbs: step.top_probs(),
+    lensIds: step.lens_ids(),
+    lensProbs: step.lens_probs(),
   };
+  msg.lensTexts = Array.from(msg.lensIds, (id) => engine.token_text(id));
   msg.topTexts = Array.from(msg.topIds, (id) => engine.token_text(id));
   step.free();
   postMessage(msg, [msg.attention.buffer, msg.mlp.buffer, msg.resid.buffer]);
@@ -72,9 +76,11 @@ function send(step, isPrompt) {
 // Yield to the event loop between tokens so a "stop" message can arrive.
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
-async function generate({ prompt, maxTokens, temperature, topP, seed }) {
+async function generate({ prompt, maxTokens, temperature, topP, seed, lens, ablateHeads, ablateNeurons }) {
   stopRequested = false;
   engine.reset(BigInt(seed), temperature, topP);
+  engine.set_lens(Boolean(lens));
+  engine.set_ablation(Uint32Array.from(ablateHeads ?? []), Uint32Array.from(ablateNeurons ?? []));
   const ids = engine.encode_prompt(prompt);
   for (const id of ids) send(engine.step(id), true);
   for (let n = 0; n < maxTokens; n++) {

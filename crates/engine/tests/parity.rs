@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 
 use glasswing_engine::safetensors::SafeTensors;
-use glasswing_engine::{Model, Session, Tokenizer, Trace};
+use glasswing_engine::{Ablation, Model, Session, Tokenizer, Trace};
 
 // Same bar as the Python fixture test: float sums differ across machines in the last bits.
 const RTOL: f32 = 1e-4;
@@ -141,4 +141,44 @@ fn session_refuses_to_run_past_the_context() {
     let max = model.config.max_seq_len;
     session.run(&model, &vec![1; max], None).unwrap();
     assert!(session.run(&model, &[1], None).is_err());
+}
+
+#[test]
+fn ablation_changes_only_what_it_should() {
+    let model = Model::from_safetensors(&read(fixtures().join("tiny/model.safetensors"))).unwrap();
+    let tokens: Vec<u32> = (0..12).map(|i| (i * 97 + 3) % 4096).collect();
+    let run = |ablation: Ablation| {
+        let mut s = Session::new(&model);
+        s.ablation = ablation;
+        let mut trace = Trace::default();
+        let logits = s.run(&model, &tokens, Some(&mut trace)).unwrap();
+        (logits, trace)
+    };
+    let (base, _) = run(Ablation::default());
+    let (head, _) = run(Ablation {
+        heads: vec![(1, 2)],
+        neurons: vec![],
+    });
+    assert_ne!(base, head, "ablating a head changes the output");
+
+    let (_, trace) = run(Ablation {
+        heads: vec![],
+        neurons: vec![(0, 5), (1, 7)],
+    });
+    let f = model.config.hidden_dim;
+    let act0 = &trace.get("layers.0.mlp_act").unwrap().data;
+    assert!((0..tokens.len()).all(|r| act0[r * f + 5] == 0.0));
+    let act1 = &trace.get("layers.1.mlp_act").unwrap().data;
+    assert!((0..tokens.len()).all(|r| act1[r * f + 7] == 0.0));
+    assert!(act0.iter().any(|&a| a != 0.0));
+
+    let mut s = Session::new(&model);
+    s.ablation = Ablation {
+        heads: vec![(9, 0)],
+        neurons: vec![],
+    };
+    assert!(
+        s.run(&model, &tokens, None).is_err(),
+        "out-of-range ablation is refused"
+    );
 }

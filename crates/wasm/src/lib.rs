@@ -25,6 +25,7 @@ pub struct Engine {
     session: Session,
     sampler: Sampler,
     last_logits: Vec<f32>,
+    lens: bool,
 }
 
 /// The result of one `step`: the views of the trace the visualization draws.
@@ -37,6 +38,8 @@ pub struct Step {
     resid: Vec<f32>,
     top_ids: Vec<u32>,
     top_probs: Vec<f32>,
+    lens_ids: Vec<u32>,
+    lens_probs: Vec<f32>,
 }
 
 #[wasm_bindgen]
@@ -67,6 +70,14 @@ impl Step {
     pub fn top_probs(&self) -> Vec<f32> {
         self.top_probs.clone()
     }
+    /// Logit lens `[layers+1, 5]`: top tokens if the model stopped after the embedding / each
+    /// layer. Empty unless `set_lens(true)`.
+    pub fn lens_ids(&self) -> Vec<u32> {
+        self.lens_ids.clone()
+    }
+    pub fn lens_probs(&self) -> Vec<f32> {
+        self.lens_probs.clone()
+    }
 }
 
 #[wasm_bindgen]
@@ -82,6 +93,7 @@ impl Engine {
             session,
             sampler: Sampler::greedy(),
             last_logits: vec![],
+            lens: false,
         })
     }
 
@@ -92,6 +104,39 @@ impl Engine {
             r#"{{"vocab_size":{},"dim":{},"n_layers":{},"n_heads":{},"n_kv_heads":{},"hidden_dim":{},"max_seq_len":{}}}"#,
             c.vocab_size, c.dim, c.n_layers, c.n_heads, c.n_kv_heads, c.hidden_dim, c.max_seq_len
         )
+    }
+
+    /// Compute the logit lens on every step (about half a forward pass extra).
+    pub fn set_lens(&mut self, on: bool) {
+        self.lens = on;
+    }
+
+    /// Switch off attention heads and MLP neurons for the following tokens. Both arrays are flat
+    /// pairs: `heads = [layer, head, layer, head, ...]`, `neurons = [layer, neuron, ...]`.
+    pub fn set_ablation(&mut self, heads: &[u32], neurons: &[u32]) -> Result<(), JsError> {
+        let pairs = |v: &[u32]| -> Vec<(usize, usize)> {
+            v.chunks_exact(2)
+                .map(|p| (p[0] as usize, p[1] as usize))
+                .collect()
+        };
+        let c = &self.model.config;
+        let ablation = glasswing_engine::Ablation {
+            heads: pairs(heads),
+            neurons: pairs(neurons),
+        };
+        if ablation
+            .heads
+            .iter()
+            .any(|&(l, h)| l >= c.n_layers || h >= c.n_heads)
+            || ablation
+                .neurons
+                .iter()
+                .any(|&(l, j)| l >= c.n_layers || j >= c.hidden_dim)
+        {
+            return Err(JsError::new("set_ablation: no such head or neuron"));
+        }
+        self.session.ablation = ablation;
+        Ok(())
     }
 
     /// Start a new story: empty KV cache, new sampler settings.
@@ -126,8 +171,8 @@ impl Engine {
 
     /// Feed one token and return what happened inside the model.
     pub fn step(&mut self, token: u32) -> Result<Step, JsError> {
-        let s =
-            step::step(&self.model, &mut self.session, token).map_err(|e| JsError::new(&e.0))?;
+        let s = step::step(&self.model, &mut self.session, token, self.lens)
+            .map_err(|e| JsError::new(&e.0))?;
         let (top_ids, top_probs) = softmax_top_k(&s.logits, 20);
         self.last_logits = s.logits;
         Ok(Step {
@@ -138,6 +183,8 @@ impl Engine {
             resid: s.resid,
             top_ids,
             top_probs,
+            lens_ids: s.lens_ids,
+            lens_probs: s.lens_probs,
         })
     }
 

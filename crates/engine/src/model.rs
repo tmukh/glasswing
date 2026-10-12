@@ -206,6 +206,15 @@ impl Model {
         self.embed.len() + self.norm.len() + self.output.as_ref().map_or(0, Vec::len) + per_layer
     }
 
+    /// Logit lens: what the model would predict if the residual stream `x` (`[D]`) were the
+    /// last layer's output: final RMSNorm, then the unembedding. Returns logits `[V]`.
+    pub fn lens(&self, x: &[f32]) -> Vec<f32> {
+        let c = &self.config;
+        let h = rmsnorm(x, &self.norm, c.norm_eps);
+        let out_w = self.output.as_deref().unwrap_or(&self.embed);
+        linear(&h, out_w, 1, c.dim, c.vocab_size)
+    }
+
     /// Run a whole sequence from scratch and return logits `[T, V]`, row t = scores for the token
     /// after t. With `trace`, every intermediate tensor is recorded under the same names as the
     /// Python reference.
@@ -222,6 +231,19 @@ pub struct Session {
     k_cache: Vec<Vec<f32>>,
     v_cache: Vec<Vec<f32>>,
     pos: usize,
+    /// Parts of the model switched off for this session (interpretability experiments).
+    pub ablation: Ablation,
+}
+
+/// Zero-ablation: an ablated attention head contributes nothing to the residual stream (its
+/// output is zeroed before `o_proj` mixes the heads); an ablated MLP neuron's activation is zero.
+/// Applies to tokens processed after it is set, so set it before `run`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Ablation {
+    /// (layer, head)
+    pub heads: Vec<(usize, usize)>,
+    /// (layer, neuron)
+    pub neurons: Vec<(usize, usize)>,
 }
 
 impl Session {
@@ -232,6 +254,7 @@ impl Session {
             k_cache: vec![vec![0.0; size]; c.n_layers],
             v_cache: vec![vec![0.0; size]; c.n_layers],
             pos: 0,
+            ablation: Ablation::default(),
         }
     }
 
@@ -268,6 +291,16 @@ impl Session {
         }
         if let Some(&bad) = tokens.iter().find(|&&t| t as usize >= c.vocab_size) {
             bail!("run: token id {bad} >= vocab size {}", c.vocab_size);
+        }
+        let a = &self.ablation;
+        if a.heads
+            .iter()
+            .any(|&(l, h)| l >= c.n_layers || h >= c.n_heads)
+            || a.neurons
+                .iter()
+                .any(|&(l, j)| l >= c.n_layers || j >= c.hidden_dim)
+        {
+            bail!("run: ablation refers to a head or neuron the model does not have");
         }
 
         // Embedding: copy each token's row of the table into the residual stream.
@@ -339,7 +372,7 @@ impl Session {
         self.k_cache[i][start * kv..end * kv].copy_from_slice(&k);
         self.v_cache[i][start * kv..end * kv].copy_from_slice(&v);
 
-        let (attn, weights) = attention(
+        let (mut attn, weights) = attention(
             &q,
             &self.k_cache[i][..end * kv],
             &self.v_cache[i][..end * kv],
@@ -352,6 +385,11 @@ impl Session {
         if trace.is_some() {
             record(trace, &name("attn_weights"), &[nh, n, end], &weights);
         }
+        for &(_, h) in self.ablation.heads.iter().filter(|(layer, _)| *layer == i) {
+            for r in 0..n {
+                attn[(r * nh + h) * hd..][..hd].fill(0.0);
+            }
+        }
         let attn_out = linear(&attn, &l.wo, n, nh * hd, d);
         record(trace, &name("attn_out"), &[n, d], &attn_out);
         add(&mut x, &attn_out);
@@ -362,7 +400,17 @@ impl Session {
         record(trace, &name("mlp_in"), &[n, d], &h);
         let gate = linear(&h, &l.w_gate, n, d, f);
         let up = linear(&h, &l.w_up, n, d, f);
-        let act: Vec<f32> = gate.iter().zip(&up).map(|(&g, &u)| silu(g) * u).collect();
+        let mut act: Vec<f32> = gate.iter().zip(&up).map(|(&g, &u)| silu(g) * u).collect();
+        for &(_, j) in self
+            .ablation
+            .neurons
+            .iter()
+            .filter(|(layer, _)| *layer == i)
+        {
+            for r in 0..n {
+                act[r * f + j] = 0.0;
+            }
+        }
         record(trace, &name("mlp_act"), &[n, f], &act);
         let mlp_out = linear(&act, &l.w_down, n, f, d);
         record(trace, &name("mlp_out"), &[n, d], &mlp_out);

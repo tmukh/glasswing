@@ -5,6 +5,7 @@
 
 use crate::error::{Result, bail};
 use crate::model::{Model, Session};
+use crate::sample::softmax_top_k;
 use crate::trace::Trace;
 
 /// What happened inside the model while it processed one token at position `pos`.
@@ -19,10 +20,17 @@ pub struct StepTrace {
     pub resid: Vec<f32>,
     /// `[V]`: next-token logits.
     pub logits: Vec<f32>,
+    /// Logit lens, when asked for: for the embedding and each layer, the `LENS_K` tokens the model
+    /// would predict if it stopped there, `[L+1, LENS_K]`, with their probabilities.
+    pub lens_ids: Vec<u32>,
+    pub lens_probs: Vec<f32>,
 }
 
-/// Feed one token through `session` and collect the views of its trace.
-pub fn step(model: &Model, session: &mut Session, token: u32) -> Result<StepTrace> {
+pub const LENS_K: usize = 5;
+
+/// Feed one token through `session` and collect the views of its trace; with `lens`, also run
+/// the logit lens at every layer (costs about half a forward pass).
+pub fn step(model: &Model, session: &mut Session, token: u32, lens: bool) -> Result<StepTrace> {
     let c = &model.config;
     let pos = session.pos();
     let mut trace = Trace::default();
@@ -44,12 +52,22 @@ pub fn step(model: &Model, session: &mut Session, token: u32) -> Result<StepTrac
         mlp.extend_from_slice(get(&format!("layers.{l}.mlp_act"))?);
         resid.extend_from_slice(get(&format!("layers.{l}.resid_out"))?);
     }
+    let (mut lens_ids, mut lens_probs) = (Vec::new(), Vec::new());
+    if lens {
+        for row in resid.chunks_exact(c.dim) {
+            let (ids, probs) = softmax_top_k(&model.lens(row), LENS_K);
+            lens_ids.extend(ids);
+            lens_probs.extend(probs);
+        }
+    }
     Ok(StepTrace {
         pos,
         attention,
         mlp,
         resid,
         logits,
+        lens_ids,
+        lens_probs,
     })
 }
 
@@ -67,12 +85,15 @@ mod tests {
         let c = model.config.clone();
         let mut session = Session::new(&model);
         for (i, tok) in [5u32, 6, 7].into_iter().enumerate() {
-            let s = step(&model, &mut session, tok).unwrap();
+            let s = step(&model, &mut session, tok, true).unwrap();
             assert_eq!(s.pos, i);
             assert_eq!(s.attention.len(), c.n_layers * c.n_heads * (i + 1));
             assert_eq!(s.mlp.len(), c.n_layers * c.hidden_dim);
             assert_eq!(s.resid.len(), (c.n_layers + 1) * c.dim);
             assert_eq!(s.logits.len(), c.vocab_size);
+            // The lens at the last layer is exactly the model's own prediction.
+            let last = &s.lens_ids[c.n_layers * LENS_K..];
+            assert_eq!(last, softmax_top_k(&s.logits, LENS_K).0.as_slice());
             for row in s.attention.chunks_exact(i + 1) {
                 let sum: f32 = row.iter().sum();
                 assert!((sum - 1.0).abs() < 1e-5, "attention row sums to {sum}");
