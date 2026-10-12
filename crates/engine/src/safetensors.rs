@@ -17,6 +17,7 @@ use crate::error::{Result, bail};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dtype {
     F32,
+    F16,
     I64,
 }
 
@@ -24,6 +25,7 @@ impl Dtype {
     fn size(self) -> usize {
         match self {
             Dtype::F32 => 4,
+            Dtype::F16 => 2,
             Dtype::I64 => 8,
         }
     }
@@ -79,6 +81,7 @@ impl<'a> SafeTensors<'a> {
                 .map_err(|e| crate::error::Error(format!("safetensors: {name}: {e}")))?;
             let dtype = match raw.dtype.as_str() {
                 "F32" => Dtype::F32,
+                "F16" => Dtype::F16,
                 "I64" => Dtype::I64,
                 other => bail!("safetensors: {name}: unsupported dtype {other}"),
             };
@@ -127,16 +130,22 @@ impl<'a> SafeTensors<'a> {
         }
     }
 
-    /// The tensor as f32 values in row-major order, with its shape.
+    /// The tensor as f32 values in row-major order, with its shape. F16 tensors are widened:
+    /// half the bytes to download, the same f32 math afterwards.
     pub fn f32(&self, name: &str) -> Result<(Vec<usize>, Vec<f32>)> {
         let e = self.entry(name)?;
-        if e.dtype != Dtype::F32 {
-            bail!("safetensors: {name} is {:?}, expected F32", e.dtype);
-        }
-        let values = self.data[e.start..e.end]
-            .chunks_exact(4)
-            .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
-            .collect();
+        let bytes = &self.data[e.start..e.end];
+        let values = match e.dtype {
+            Dtype::F32 => bytes
+                .chunks_exact(4)
+                .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
+                .collect(),
+            Dtype::F16 => bytes
+                .chunks_exact(2)
+                .map(|b| f16_to_f32(u16::from_le_bytes(b.try_into().unwrap())))
+                .collect(),
+            Dtype::I64 => bail!("safetensors: {name} is I64, expected a float tensor"),
+        };
         Ok((e.shape.clone(), values))
     }
 
@@ -153,9 +162,49 @@ impl<'a> SafeTensors<'a> {
     }
 }
 
+/// IEEE 754 half precision -> single precision, exactly (every f16 value is an f32 value).
+///
+/// f16: 1 sign bit, 5 exponent bits (bias 15), 10 mantissa bits.
+/// f32: 1 sign bit, 8 exponent bits (bias 127), 23 mantissa bits.
+/// Normal numbers: re-bias the exponent, shift the mantissa up by 13 bits.
+pub fn f16_to_f32(h: u16) -> f32 {
+    let sign = ((h >> 15) as u32) << 31;
+    let exp = ((h >> 10) & 0x1f) as u32;
+    let man = (h & 0x3ff) as u32;
+    let bits = match exp {
+        0 if man == 0 => sign, // ±0
+        0 => {
+            // Subnormal: value = man × 2^-24. Shift until the implicit leading 1 appears;
+            // every shift lowers the exponent by one.
+            let (mut e, mut m) = (127 - 15 + 1, man);
+            while m & 0x400 == 0 {
+                m <<= 1;
+                e -= 1;
+            }
+            sign | (e << 23) | ((m & 0x3ff) << 13)
+        }
+        0x1f => sign | 0x7f80_0000 | (man << 13), // inf / NaN
+        _ => sign | ((exp + 127 - 15) << 23) | (man << 13),
+    };
+    f32::from_bits(bits)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn f16_conversion() {
+        assert_eq!(f16_to_f32(0x3c00), 1.0);
+        assert_eq!(f16_to_f32(0xc000), -2.0);
+        assert_eq!(f16_to_f32(0x3555), 0.333_251_95); // 1/3 rounded to f16
+        assert_eq!(f16_to_f32(0x7bff), 65504.0); // largest f16
+        assert_eq!(f16_to_f32(0x0001), 2f32.powi(-24)); // smallest subnormal
+        assert_eq!(f16_to_f32(0x03ff), 1023.0 * 2f32.powi(-24)); // largest subnormal
+        assert_eq!(f16_to_f32(0x7c00), f32::INFINITY);
+        assert!(f16_to_f32(0x7e00).is_nan());
+        assert_eq!(f16_to_f32(0x8000).to_bits(), (-0.0f32).to_bits());
+    }
 
     fn file(header: &str, data: &[u8]) -> Vec<u8> {
         let mut out = (header.len() as u64).to_le_bytes().to_vec();

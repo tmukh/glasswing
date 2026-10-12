@@ -1,0 +1,4 @@
+# WebAssembly SIMD (128-bit lanes): lets dot() use 4-wide f32 math in the browser.
+# Supported by every current browser (Chrome 91+, Firefox 89+, Safari 16.4+).
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "target-feature=+simd128"]
