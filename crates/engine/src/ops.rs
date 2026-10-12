@@ -36,7 +36,26 @@ pub fn linear(x: &[f32], w: &[f32], rows: usize, in_dim: usize, out_dim: usize) 
     let mut out = vec![0.0; rows * out_dim];
     for r in 0..rows {
         let xr = &x[r * in_dim..(r + 1) * in_dim];
-        for (o, out_v) in out[r * out_dim..(r + 1) * out_dim].iter_mut().enumerate() {
+        let row_out = &mut out[r * out_dim..(r + 1) * out_dim];
+        #[cfg(feature = "parallel")]
+        {
+            use rayon::prelude::*;
+            // Each thread takes a block of output rows, i.e. its own slice of the weights, so
+            // several cores read memory at once. Small matrices aren't worth the hand-off.
+            if out_dim * in_dim >= 1 << 16 {
+                row_out
+                    .par_chunks_mut(64)
+                    .enumerate()
+                    .for_each(|(c, chunk)| {
+                        for (k, out_v) in chunk.iter_mut().enumerate() {
+                            let o = c * 64 + k;
+                            *out_v = dot(xr, &w[o * in_dim..(o + 1) * in_dim]);
+                        }
+                    });
+                continue;
+            }
+        }
+        for (o, out_v) in row_out.iter_mut().enumerate() {
             *out_v = dot(xr, &w[o * in_dim..(o + 1) * in_dim]);
         }
     }
