@@ -2,13 +2,13 @@
 
 A small language model you can watch think.
 
-glasswing is a Llama-style transformer (~15M parameters) trained on
+glasswing is a Llama-style transformer (15.7M parameters) trained on
 [TinyStories](https://arxiv.org/abs/2305.07759), running in the browser on an inference engine written
 from scratch in Rust and compiled to WebAssembly. While it writes, you see the tokens, the attention
 heads, the neurons firing and the next-token probabilities. You can switch parts of it off and see
 what changes.
 
-Status: **M0**, the scaffold. See [docs/plan.md](docs/plan.md).
+Status: **M1**: tokenizer, PyTorch reference model, golden fixtures. Concepts: [docs/concepts](docs/concepts). See [docs/plan.md](docs/plan.md).
 
 ## Layout
 
