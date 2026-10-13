@@ -28,7 +28,7 @@ explains what broke. The ledger stays honest: a concept moves past **new** only 
 | M4 ✅ | WebAssembly build in a Web Worker; **trace API** (attention weights, MLP activations, residual norms, logits per token); f16 weights; size and speed budgets | WASM, browser performance | the trace API shape |
 | M5 | The visualization on takodana.dev (three.js): tokens, residual stream, attention arcs, neurons firing, logit bars, sampling | portfolio | the attention-arc mapping (weights → geometry) |
 | M6 | Interpretability controls: **ablate** a head or neuron, **logit lens**, **activation patching**. Find one circuit (e.g. an induction head or a name-copying head) and write it up | mechanistic interpretability, evaluation | the ablation experiment and the write-up |
-| M7 (stretch) | Same engine loads a real small model (SmolLM-135M); native build served on k3s with Prometheus metrics (tokens/s, time to first token) | serving, SRE | — |
+| M7 ✅ | Same engine loads a real small model (SmolLM-135M); native build served on k3s with Prometheus metrics (tokens/s, time to first token) | serving, SRE | — |
 
 ## Decisions for M4–M7 (2026-10-13)
 

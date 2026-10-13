@@ -19,7 +19,7 @@ ADD --chmod=644 --checksum=sha256:5af571cbf074e6d21a03528d2330792e532ca608f24ac7
 # glasswing, from this repo's release (the same files the browser downloads).
 # --chmod: files fetched by ADD from a URL are 600 by default, unreadable for the non-root user.
 ARG GW=https://github.com/tmukh/glasswing/releases/download/v0.1.0
-ADD --chmod=644 --checksum=sha256:GLASSWING_WEIGHTS_SHA256 $GW/model-f16.safetensors /models/glasswing/model-f16.safetensors
+ADD --chmod=644 --checksum=sha256:9723f2b20b7a3ed60450b9c3e290ae1c48e792b06d91b702aa298df4a99da752 $GW/model-f16.safetensors /models/glasswing/model-f16.safetensors
 COPY assets/tokenizer.json /models/glasswing/tokenizer.json
 
 # --- run ---------------------------------------------------------------------------------------

@@ -38,3 +38,10 @@ M4: wasm engine (288 KB) in a Web Worker, 285 traced tokens/s in Node/V8 (193 wi
 weights 31.5 MB, greedy stories unchanged; CI web job (size budget, wasm == native). Release v0.1.0.
 Break-it lab M4 skipped (the planned one, shipping f32 weights past the budget, is covered by the
 size check in CI and the f16 conversion tests).
+
+M7: SmolLM2-135M-Instruct on the engine. Our PyTorch model with its weights matches transformers to
+3e-5; Rust greedy answers identical to transformers. HF tokenizer matches `tokenizers` on 15 cases
+(it drops bytes with no token, e.g. 0x04; so do we). Server: SSE, per-IP token bucket, 2 concurrent,
+256 tokens, 60 s. Locally 31-36 tokens/s, first token ~450 ms.
+Image test in CI found two bugs before any deploy: a one-character container name, and model files
+fetched with ADD being mode 600 (unreadable for the non-root user). `ADD --chmod=644`.

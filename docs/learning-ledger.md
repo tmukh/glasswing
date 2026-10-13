@@ -45,3 +45,12 @@ Concepts already confident in homelab-dev's or night-sky-digest's ledger are not
 | f16 vs f32: range vs precision; widening on load | M4 | new | 2026-10-13 | 62.9 -> 31.5 MB, stories unchanged |
 | WebAssembly SIMD (simd128) | M4 | new | 2026-10-13 | 193 -> 285 tokens/s |
 | Size budgets in CI; release bundles pinned by sha256 | M4 | new | 2026-10-13 |  |
+| bf16 (top half of an f32) | M7 | new | 2026-10-13 |  |
+| Loading Hugging Face checkpoints: config mapping, refusing unsupported features | M7 | new | 2026-10-13 |  |
+| GPT-2 byte-level BPE: added tokens, digit splitting, Unicode regex, bytes_to_unicode | M7 | new | 2026-10-13 | 15 cases match tokenizers |
+| Chat templates (ChatML) and prompt-injection through template tokens | M7 | new | 2026-10-13 |  |
+| Parallel matrix-vector products (rayon), why decode benefits | M7 | new | 2026-10-13 |  |
+| Server-Sent Events, streaming UTF-8 across tokens | M7 | new | 2026-10-13 |  |
+| Abuse limits for a public API: token bucket, concurrency semaphore, timeouts, client disconnect | M7 | new | 2026-10-13 |  |
+| Time to first token vs tokens/s | M7 | new | 2026-10-13 |  |
+| Model files pinned by checksum in the image (ADD --checksum), distroless, numeric non-root user | M7 | new | 2026-10-13 |  |
