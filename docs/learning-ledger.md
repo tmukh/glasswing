@@ -29,3 +29,14 @@ Concepts already confident in homelab-dev's or night-sky-digest's ledger are not
 | Numerically stable softmax (subtract the max) | M2 | new | 2026-10-13 | test feeds 1000s |
 | Stage-by-stage parity, first-divergence report | M2 | new | 2026-10-13 | lab: transposed q_proj -> layers.1.q |
 | Layout bugs on square matrices pass shape checks | M2 | new | 2026-10-13 | lab M2 |
+| Next-token training, cross-entropy, perplexity | M3 | new | 2026-10-13 | train loss 2.91 -> 1.17, val 1.85 -> 1.18 |
+| AdamW, weight decay (not on norms) | M3 | new | 2026-10-13 |  |
+| LR warmup + cosine decay, gradient clipping, gradient accumulation | M3 | new | 2026-10-13 |  |
+| bf16 mixed precision (range vs precision; why not fp16) | M3 | new | 2026-10-13 |  |
+| Train vs validation loss, overfitting, fixed eval windows | M3 | new | 2026-10-13 | no overfitting over 2.4 epochs |
+| Checkpoints with optimizer state, atomic writes, resume | M3 | new | 2026-10-13 |  |
+| KV cache: what is cached, why it is valid, memory cost | M3 | new | 2026-10-13 | 94x vs recompute |
+| Sampling: greedy, temperature, top-p, seeded RNG | M3 | new | 2026-10-13 |  |
+| Decode is memory-bound; tokens/s ~ bandwidth / model size | M3 | new | 2026-10-13 |  |
+| Float sums and SIMD: why 8 accumulators vectorise | M3 | new | 2026-10-13 | 94 -> ~295 tokens/s |
+| Testing incremental paths separately (lab: RoPE off by one) | M3 | new | 2026-10-13 | parity stayed green, cache test caught it |

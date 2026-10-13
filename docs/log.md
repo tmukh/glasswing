@@ -25,3 +25,11 @@ PyTorch, 11 tokenizer cases identical, locally and in CI. Clippy wanted `is_mult
 
 Break-it lab M2, layer 1 q_proj loaded transposed (square, so shapes pass): Rust CI red with
 `first divergence at p0.layers.1.q`. Exposed by `cargo test --test parity`. Fixed with `git revert`.
+
+M3: training ran 00:51–04:35, 40,000 steps, 1.31B tokens, final val loss 1.182 (no overfitting).
+Rust greedy output identical to PyTorch on the final weights; native ~280–320 tokens/s.
+KV cache 94x faster than recomputing; dot() with 8 accumulators 94 -> ~295 tokens/s.
+
+Break-it lab M3, RoPE position off by one only for single-token decode: fixture parity stayed green,
+`cargo test --test parity` failed in kv_cache_gives_the_same_logits_as_a_full_pass (position 10, not 0:
+a constant shift is invisible to RoPE). compare.py: one story diverged at char 411. Fixed with `git revert`.
