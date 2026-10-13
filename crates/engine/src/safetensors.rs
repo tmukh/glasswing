@@ -18,6 +18,7 @@ use crate::error::{Result, bail};
 pub enum Dtype {
     F32,
     F16,
+    BF16,
     I64,
 }
 
@@ -25,7 +26,7 @@ impl Dtype {
     fn size(self) -> usize {
         match self {
             Dtype::F32 => 4,
-            Dtype::F16 => 2,
+            Dtype::F16 | Dtype::BF16 => 2,
             Dtype::I64 => 8,
         }
     }
@@ -82,6 +83,7 @@ impl<'a> SafeTensors<'a> {
             let dtype = match raw.dtype.as_str() {
                 "F32" => Dtype::F32,
                 "F16" => Dtype::F16,
+                "BF16" => Dtype::BF16,
                 "I64" => Dtype::I64,
                 other => bail!("safetensors: {name}: unsupported dtype {other}"),
             };
@@ -143,6 +145,11 @@ impl<'a> SafeTensors<'a> {
             Dtype::F16 => bytes
                 .chunks_exact(2)
                 .map(|b| f16_to_f32(u16::from_le_bytes(b.try_into().unwrap())))
+                .collect(),
+            // bf16 is the top half of an f32: same sign and exponent, mantissa cut to 7 bits.
+            Dtype::BF16 => bytes
+                .chunks_exact(2)
+                .map(|b| f32::from_bits((u16::from_le_bytes(b.try_into().unwrap()) as u32) << 16))
                 .collect(),
             Dtype::I64 => bail!("safetensors: {name} is I64, expected a float tensor"),
         };
