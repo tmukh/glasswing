@@ -8,7 +8,7 @@ from scratch in Rust and compiled to WebAssembly. While it writes, you see the t
 heads, the neurons firing and the next-token probabilities. You can switch parts of it off and see
 what changes.
 
-Status: **M7**: SmolLM2-135M served on k3s at [glasswing.takodana.dev](https://glasswing.takodana.dev). **M4**: runs in the browser (WebAssembly, f16 weights). **M3**: trained (val loss 1.182 after 1.31B tokens, 3 h 38 min on one RTX 3060 Ti); KV cache, sampling and a CLI in Rust. Concepts: [docs/concepts](docs/concepts). See [docs/plan.md](docs/plan.md).
+Status: **M6**: an induction circuit found and written up, ablation and logit lens in the browser. **M7**: SmolLM2-135M served on k3s at [glasswing.takodana.dev](https://glasswing.takodana.dev). **M4**: runs in the browser (WebAssembly, f16 weights). **M3**: trained (val loss 1.182 after 1.31B tokens, 3 h 38 min on one RTX 3060 Ti); KV cache, sampling and a CLI in Rust. Concepts: [docs/concepts](docs/concepts). See [docs/plan.md](docs/plan.md).
 
 ## Layout
 

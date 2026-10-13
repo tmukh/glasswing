@@ -144,3 +144,33 @@ def test_golden_fixtures_are_current(expected):
                 atol=1e-4,
                 msg=lambda m, n=f"p{i}.{name}": f"{n}: {m}",
             )
+
+
+def test_ablation_matches_between_attention_paths():
+    # The fused and explicit attention paths must ablate the same way.
+    model = random_tiny_model()
+    model.set_ablation(heads=[(1, 2)], neurons=[(0, 5)])
+    tokens = torch.randint(0, TINY.vocab_size, (1, 12))
+    with torch.no_grad():
+        fast = model(tokens)
+        trace: dict = {}
+        explicit = model(tokens, trace=trace)
+    torch.testing.assert_close(fast, explicit, rtol=1e-4, atol=1e-4)
+    assert torch.all(trace["layers.0.mlp_act"][..., 5] == 0)
+    model.set_ablation()
+    with torch.no_grad():
+        assert not torch.allclose(model(tokens), fast)
+
+
+def test_patching_own_activation_is_a_no_op():
+    model = random_tiny_model()
+    tokens = torch.randint(0, TINY.vocab_size, (1, 10))
+    trace: dict = {}
+    with torch.no_grad():
+        base = model(tokens, trace=trace)
+        vec = trace["layers.0.resid_out"][0, 4]
+        same = model(tokens, patch={(0, 4): vec})
+        other = model(tokens, patch={(0, 4): torch.zeros_like(vec)})
+    torch.testing.assert_close(base, same, rtol=1e-4, atol=1e-4)
+    assert not torch.allclose(base[0, 4:], other[0, 4:])
+    torch.testing.assert_close(base[0, :4], other[0, :4])  # the past is untouched

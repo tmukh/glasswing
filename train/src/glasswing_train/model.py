@@ -90,6 +90,7 @@ class Attention(nn.Module):
         self.k_proj = nn.Linear(cfg.dim, cfg.n_kv_heads * hd, bias=False)
         self.v_proj = nn.Linear(cfg.dim, cfg.n_kv_heads * hd, bias=False)
         self.o_proj = nn.Linear(cfg.n_heads * hd, cfg.dim, bias=False)
+        self.ablated: list[int] = []  # heads whose output is zeroed (interpretability)
 
     def forward(self, x, cos, sin, trace=None, prefix=""):
         cfg = self.cfg
@@ -110,6 +111,8 @@ class Attention(nn.Module):
             # Training and plain inference: PyTorch's fused kernel computes the same thing without
             # materialising the [T, T] weights (test_fast_attention_matches_explicit).
             out = F.scaled_dot_product_attention(q, k_rep, v_rep, is_causal=True)
+            if self.ablated:
+                out[:, self.ablated] = 0
             out = out.transpose(1, 2).reshape(B, T, cfg.n_heads * hd)
             return self.o_proj(out)
 
@@ -120,6 +123,8 @@ class Attention(nn.Module):
         scores = scores.masked_fill(future, float("-inf"))
         weights = F.softmax(scores, dim=-1)
         out = weights @ v_rep  # [B, H, T, Hd]: a weighted average of values
+        if self.ablated:
+            out[:, self.ablated] = 0
         out = out.transpose(1, 2).reshape(B, T, cfg.n_heads * hd)
         out = self.o_proj(out)
 
@@ -137,10 +142,13 @@ class MLP(nn.Module):
         self.gate_proj = nn.Linear(cfg.dim, cfg.hidden_dim, bias=False)
         self.up_proj = nn.Linear(cfg.dim, cfg.hidden_dim, bias=False)
         self.down_proj = nn.Linear(cfg.hidden_dim, cfg.dim, bias=False)
+        self.ablated: list[int] = []  # neurons whose activation is zeroed
 
     def forward(self, x, trace=None, prefix=""):
         # SwiGLU: SiLU(gate) decides how much of `up` gets through, per neuron.
         act = F.silu(self.gate_proj(x)) * self.up_proj(x)  # [B, T, F]: the "neurons"
+        if self.ablated:
+            act[..., self.ablated] = 0
         out = self.down_proj(act)
         if trace is not None:
             trace[prefix + "mlp_act"] = act
@@ -200,8 +208,20 @@ class Transformer(nn.Module):
             else:
                 nn.init.normal_(p, 0.0, 0.02, generator=gen)
 
-    def forward(self, tokens: torch.Tensor, trace: dict | None = None) -> torch.Tensor:
-        """tokens [B, T] -> logits [B, T, V]."""
+    def set_ablation(self, heads=(), neurons=()) -> None:
+        """Zero-ablate (layer, head) and (layer, neuron) pairs, like the Rust engine's Ablation."""
+        for i, layer in enumerate(self.model.layers):
+            layer.self_attn.ablated = sorted({h for li, h in heads if li == i})
+            layer.mlp.ablated = sorted({j for li, j in neurons if li == i})
+
+    def forward(
+        self, tokens: torch.Tensor, trace: dict | None = None, patch: dict | None = None
+    ) -> torch.Tensor:
+        """tokens [B, T] -> logits [B, T, V].
+
+        `patch` maps (layer, position) to a residual-stream vector [D] that replaces the stream at
+        that position after that layer (layer -1 = after the embedding): activation patching.
+        """
         _, T = tokens.shape
         assert T <= self.cfg.max_seq_len
         positions = torch.arange(T, device=tokens.device)
@@ -210,8 +230,17 @@ class Transformer(nn.Module):
         x = self.model.embed_tokens(tokens)
         if trace is not None:
             trace["embed"] = x
+        patch = patch or {}
+        for (li, pos), vec in patch.items():
+            if li == -1:
+                x = x.clone()
+                x[:, pos] = vec
         for i, layer in enumerate(self.model.layers):
             x = layer(x, cos, sin, trace, f"layers.{i}.")
+            for (li, pos), vec in patch.items():
+                if li == i:
+                    x = x.clone()
+                    x[:, pos] = vec
         x = self.model.norm(x)
         # Tied embeddings: the output layer reuses the embedding table, so a token's logit is
         # the dot product of the final stream with that token's embedding.

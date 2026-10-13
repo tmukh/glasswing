@@ -15,7 +15,7 @@ pub mod tokenizer;
 pub mod trace;
 
 pub use error::{Error, Result};
-pub use model::{Config, Model, Session};
+pub use model::{Ablation, Config, Model, Session};
 pub use sample::Sampler;
 pub use tokenizer::Tokenizer;
 pub use trace::Trace;
