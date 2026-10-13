@@ -45,3 +45,9 @@ M7: SmolLM2-135M-Instruct on the engine. Our PyTorch model with its weights matc
 256 tokens, 60 s. Locally 31-36 tokens/s, first token ~450 ms.
 Image test in CI found two bugs before any deploy: a one-character container name, and model files
 fetched with ADD being mode 600 (unreadable for the non-root user). `ADD --chmod=644`.
+
+M6: induction circuit L3H3/L3H1 (previous-token) -> L4H4 (induction). Circuit off: second copy of
+repeated text 1.40 -> 1.59 (random heads 1.42); name task logit diff 10.4 -> 7.8. Patching: the name
+moves to the last position in layers 5-7; logit lens 0.00 at layer 4 -> 0.36 at layer 5.
+First analysis run had two bugs: random tokens as the ablation test (loss 11.6, the model just
+doesn't do random text) and a double space in two templates. Both fixed before the final run.

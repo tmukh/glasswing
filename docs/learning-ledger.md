@@ -54,3 +54,9 @@ Concepts already confident in homelab-dev's or night-sky-digest's ledger are not
 | Abuse limits for a public API: token bucket, concurrency semaphore, timeouts, client disconnect | M7 | new | 2026-10-13 |  |
 | Time to first token vs tokens/s | M7 | new | 2026-10-13 |  |
 | Model files pinned by checksum in the image (ADD --checksum), distroless, numeric non-root user | M7 | new | 2026-10-13 |  |
+| Circuits, induction heads, K-composition | M6 | new | 2026-10-13 |  |
+| Induction and previous-token scores on repeated random tokens | M6 | new | 2026-10-13 | L4H4 0.26; L3H3 0.84, L3H1 0.43 |
+| Zero-ablation and why a random-head control matters | M6 | new | 2026-10-13 | stories: circuit ~ random; copying: circuit +0.19 vs +0.02 |
+| Logit difference as a task metric | M6 | new | 2026-10-13 |  |
+| Activation patching (clean vs corrupted, restored share) | M6 | new | 2026-10-13 | name moves in layers 5-7 |
+| Logit lens | M6 | new | 2026-10-13 | answer appears at layer 5 |
