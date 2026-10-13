@@ -2,10 +2,28 @@
 //! slices in row-major order: element (r, c) of an [R, C] matrix is at `r * C + c`.
 
 /// Dot product of two equal-length slices.
+///
+/// Eight independent running sums instead of one: a single float sum must be added strictly in
+/// order (float addition isn't associative), which forbids the compiler from using SIMD. With
+/// eight lanes it can, and the sums are combined at the end. The result differs from a plain
+/// left-to-right sum in the last bits, well inside the parity tolerance.
 #[inline]
 pub fn dot(a: &[f32], b: &[f32]) -> f32 {
     debug_assert_eq!(a.len(), b.len());
-    a.iter().zip(b).map(|(x, y)| x * y).sum()
+    let mut acc = [0.0f32; 8];
+    let (ca, cb) = (a.chunks_exact(8), b.chunks_exact(8));
+    let tail: f32 = ca
+        .remainder()
+        .iter()
+        .zip(cb.remainder())
+        .map(|(x, y)| x * y)
+        .sum();
+    for (x, y) in ca.zip(cb) {
+        for i in 0..8 {
+            acc[i] += x[i] * y[i];
+        }
+    }
+    acc.iter().sum::<f32>() + tail
 }
 
 /// `x [rows, in] · wᵀ` with `w [out, in]` (PyTorch's `nn.Linear` layout) -> `[rows, out]`.
@@ -79,10 +97,18 @@ pub fn rope_tables(max_seq_len: usize, head_dim: usize, theta: f32) -> (Vec<f32>
 }
 
 /// Rotate each head's dimension pairs (i, i + half) in place.
-/// `x` is `[T, n_heads * head_dim]`; position t uses row t of the tables.
-pub fn apply_rope(x: &mut [f32], n_heads: usize, head_dim: usize, cos: &[f32], sin: &[f32]) {
+/// `x` is `[n, n_heads * head_dim]` for tokens at positions `start..start+n`.
+pub fn apply_rope(
+    x: &mut [f32],
+    n_heads: usize,
+    head_dim: usize,
+    cos: &[f32],
+    sin: &[f32],
+    start: usize,
+) {
     let half = head_dim / 2;
-    for (t, row) in x.chunks_exact_mut(n_heads * head_dim).enumerate() {
+    for (r, row) in x.chunks_exact_mut(n_heads * head_dim).enumerate() {
+        let t = start + r;
         let (c, s) = (
             &cos[t * half..(t + 1) * half],
             &sin[t * half..(t + 1) * half],
@@ -128,7 +154,7 @@ mod tests {
     fn rope_at_position_zero_is_identity() {
         let (cos, sin) = rope_tables(4, 4, 10000.0);
         let mut x = vec![1.0, 2.0, 3.0, 4.0];
-        apply_rope(&mut x, 1, 4, &cos, &sin);
+        apply_rope(&mut x, 1, 4, &cos, &sin, 0);
         assert_eq!(x, vec![1.0, 2.0, 3.0, 4.0]);
     }
 }

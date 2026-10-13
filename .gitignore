@@ -12,3 +12,4 @@ data/
 checkpoints/
 *.safetensors
 !fixtures/**/*.safetensors
+*.log

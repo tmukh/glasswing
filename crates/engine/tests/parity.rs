@@ -7,7 +7,7 @@
 use std::path::PathBuf;
 
 use glasswing_engine::safetensors::SafeTensors;
-use glasswing_engine::{Model, Tokenizer, Trace};
+use glasswing_engine::{Model, Session, Tokenizer, Trace};
 
 // Same bar as the Python fixture test: float sums differ across machines in the last bits.
 const RTOL: f32 = 1e-4;
@@ -103,4 +103,42 @@ fn rejects_bad_input() {
     assert!(model.forward(&[5000], None).is_err());
     let too_long = vec![1; model.config.max_seq_len + 1];
     assert!(model.forward(&too_long, None).is_err());
+}
+
+#[test]
+fn kv_cache_gives_the_same_logits_as_a_full_pass() {
+    // Generation feeds one token at a time through the cache; the result must not depend on
+    // how the sequence was split up.
+    let model = Model::from_safetensors(&read(fixtures().join("tiny/model.safetensors"))).unwrap();
+    let tokens: Vec<u32> = (0..30).map(|i| (i * 131 + 7) % 4096).collect();
+    let v = model.config.vocab_size;
+    let full = model.forward(&tokens, None).unwrap();
+
+    for split in [vec![1; 30], vec![10, 1, 1, 18], vec![29, 1]] {
+        let mut session = Session::new(&model);
+        let mut at = 0;
+        for n in split {
+            let logits = session.run(&tokens[at..at + n], None).unwrap();
+            for (r, row) in logits.chunks_exact(v).enumerate() {
+                let want = &full[(at + r) * v..][..v];
+                let diff = row
+                    .iter()
+                    .zip(want)
+                    .map(|(a, b)| (a - b).abs())
+                    .fold(0.0, f32::max);
+                assert!(diff < 1e-4, "position {}: max diff {diff}", at + r);
+            }
+            at += n;
+        }
+        assert_eq!(session.pos(), 30);
+    }
+}
+
+#[test]
+fn session_refuses_to_run_past_the_context() {
+    let model = Model::from_safetensors(&read(fixtures().join("tiny/model.safetensors"))).unwrap();
+    let mut session = Session::new(&model);
+    let max = model.config.max_seq_len;
+    session.run(&vec![1; max], None).unwrap();
+    assert!(session.run(&[1], None).is_err());
 }

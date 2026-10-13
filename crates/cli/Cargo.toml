@@ -1,0 +1,15 @@
+[package]
+name = "glasswing-cli"
+description = "Generate stories and benchmark glasswing-engine from the terminal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "glasswing"
+path = "src/main.rs"
+
+[dependencies]
+glasswing-engine = { path = "../engine" }

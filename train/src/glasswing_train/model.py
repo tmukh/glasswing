@@ -53,8 +53,10 @@ class RMSNorm(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Divide by the root-mean-square of the vector, then scale each dimension.
-        rms = torch.sqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
-        return x / rms * self.weight
+        # In f32 even under bf16 autocast: a mean of squares loses too much in 8 mantissa bits.
+        xf = x.float()
+        rms = torch.sqrt(xf.pow(2).mean(dim=-1, keepdim=True) + self.eps)
+        return (xf / rms * self.weight).type_as(x)
 
 
 def rope_cos_sin(cfg: ModelConfig, positions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -104,6 +106,13 @@ class Attention(nn.Module):
         k_rep = k.repeat_interleave(group, dim=1)  # [B, H, T, Hd]
         v_rep = v.repeat_interleave(group, dim=1)
 
+        if trace is None:
+            # Training and plain inference: PyTorch's fused kernel computes the same thing without
+            # materialising the [T, T] weights (test_fast_attention_matches_explicit).
+            out = F.scaled_dot_product_attention(q, k_rep, v_rep, is_causal=True)
+            out = out.transpose(1, 2).reshape(B, T, cfg.n_heads * hd)
+            return self.o_proj(out)
+
         # How well each query matches each key, scaled so the softmax doesn't saturate as Hd grows.
         scores = q @ k_rep.transpose(-2, -1) / math.sqrt(hd)  # [B, H, T, T]
         # Causal mask: position t may only look at positions <= t.
@@ -114,12 +123,11 @@ class Attention(nn.Module):
         out = out.transpose(1, 2).reshape(B, T, cfg.n_heads * hd)
         out = self.o_proj(out)
 
-        if trace is not None:
-            trace[prefix + "q"] = q
-            trace[prefix + "k"] = k
-            trace[prefix + "v"] = v
-            trace[prefix + "attn_weights"] = weights
-            trace[prefix + "attn_out"] = out
+        trace[prefix + "q"] = q
+        trace[prefix + "k"] = k
+        trace[prefix + "v"] = v
+        trace[prefix + "attn_weights"] = weights
+        trace[prefix + "attn_out"] = out
         return out
 
 

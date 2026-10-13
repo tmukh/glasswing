@@ -1,6 +1,11 @@
 //! The forward pass. Mirrors `train/src/glasswing_train/model.py` step by step; the golden
 //! fixtures check that it computes the same numbers.
 //!
+//! A [`Session`] holds the KV cache: keys and values of every token processed so far. Feeding it
+//! tokens one at a time costs one token's work per step instead of re-running the whole sequence.
+//! [`Model::forward`] is just a fresh session given all tokens at once, so the parity test covers
+//! the cached path too.
+//!
 //! Shapes: T = tokens, D = dim, H = query heads, K = key/value heads, Hd = head dim,
 //! F = MLP hidden dim, V = vocabulary. Activations are row-major `[T, ...]`: one row per token.
 
@@ -115,135 +120,195 @@ impl Model {
         })
     }
 
-    /// Run the whole sequence and return logits `[T, V]`, row t = scores for the token after t.
-    /// With `trace`, every intermediate tensor is recorded under the same names as the Python
-    /// reference.
-    pub fn forward(&self, tokens: &[u32], mut trace: Option<&mut Trace>) -> Result<Vec<f32>> {
-        let c = &self.config;
-        let (t_len, d) = (tokens.len(), c.dim);
-        if t_len == 0 || t_len > c.max_seq_len {
-            bail!("forward: {t_len} tokens, must be 1..={}", c.max_seq_len);
+    /// Run a whole sequence from scratch and return logits `[T, V]`, row t = scores for the token
+    /// after t. With `trace`, every intermediate tensor is recorded under the same names as the
+    /// Python reference.
+    pub fn forward(&self, tokens: &[u32], trace: Option<&mut Trace>) -> Result<Vec<f32>> {
+        Session::new(self).run(tokens, trace)
+    }
+}
+
+/// One generation in progress: the model plus the KV cache for the tokens seen so far.
+pub struct Session<'m> {
+    model: &'m Model,
+    /// Per layer: keys and values for positions `0..pos`, row-major `[max_seq_len, K*Hd]`.
+    k_cache: Vec<Vec<f32>>,
+    v_cache: Vec<Vec<f32>>,
+    pos: usize,
+}
+
+impl<'m> Session<'m> {
+    pub fn new(model: &'m Model) -> Self {
+        let c = &model.config;
+        let size = c.max_seq_len * c.n_kv_heads * c.head_dim();
+        Session {
+            model,
+            k_cache: vec![vec![0.0; size]; c.n_layers],
+            v_cache: vec![vec![0.0; size]; c.n_layers],
+            pos: 0,
+        }
+    }
+
+    /// Number of tokens processed so far (the position the next token will get).
+    pub fn pos(&self) -> usize {
+        self.pos
+    }
+
+    pub fn reset(&mut self) {
+        self.pos = 0;
+    }
+
+    /// Process `tokens` as positions `pos..pos+n`, append their keys and values to the cache, and
+    /// return logits `[n, V]`. Attention reads the cache, so earlier tokens are never recomputed.
+    pub fn run(&mut self, tokens: &[u32], mut trace: Option<&mut Trace>) -> Result<Vec<f32>> {
+        let m = self.model;
+        let c = &m.config;
+        let (n, d) = (tokens.len(), c.dim);
+        if n == 0 || self.pos + n > c.max_seq_len {
+            bail!(
+                "run: {n} new tokens at position {}, context is {}",
+                self.pos,
+                c.max_seq_len
+            );
         }
         if let Some(&bad) = tokens.iter().find(|&&t| t as usize >= c.vocab_size) {
-            bail!("forward: token id {bad} >= vocab size {}", c.vocab_size);
+            bail!("run: token id {bad} >= vocab size {}", c.vocab_size);
         }
 
         // Embedding: copy each token's row of the table into the residual stream.
-        let mut x = Vec::with_capacity(t_len * d);
+        let mut x = Vec::with_capacity(n * d);
         for &tok in tokens {
             let t = tok as usize;
-            x.extend_from_slice(&self.embed[t * d..(t + 1) * d]);
+            x.extend_from_slice(&m.embed[t * d..(t + 1) * d]);
         }
-        record(&mut trace, "embed", &[t_len, d], &x);
+        record(&mut trace, "embed", &[n, d], &x);
 
-        for (i, layer) in self.layers.iter().enumerate() {
-            x = self.block(i, layer, x, t_len, &mut trace);
+        for i in 0..m.layers.len() {
+            x = self.block(i, x, n, &mut trace);
         }
+        self.pos += n;
 
-        let x = rmsnorm(&x, &self.norm, c.norm_eps);
-        record(&mut trace, "final_norm", &[t_len, d], &x);
+        let x = rmsnorm(&x, &m.norm, c.norm_eps);
+        record(&mut trace, "final_norm", &[n, d], &x);
         // Tied embeddings: logit for token v = final stream · embedding row v.
-        let logits = linear(&x, &self.embed, t_len, d, c.vocab_size);
-        record(&mut trace, "logits", &[t_len, c.vocab_size], &logits);
+        let logits = linear(&x, &m.embed, n, d, c.vocab_size);
+        record(&mut trace, "logits", &[n, c.vocab_size], &logits);
         Ok(logits)
     }
 
     fn block(
-        &self,
+        &mut self,
         i: usize,
-        l: &Layer,
         mut x: Vec<f32>,
-        t_len: usize,
+        n: usize,
         trace: &mut Option<&mut Trace>,
     ) -> Vec<f32> {
-        let c = &self.config;
+        let m = self.model;
+        let l = &m.layers[i];
+        let c = &m.config;
         let (d, hd, f) = (c.dim, c.head_dim(), c.hidden_dim);
         let (nh, nkv) = (c.n_heads, c.n_kv_heads);
+        let (start, end) = (self.pos, self.pos + n);
         let name = |s: &str| format!("layers.{i}.{s}");
 
         // --- Attention: read a normalised copy of the stream, add the result back. ---
         let h = rmsnorm(&x, &l.attn_norm, c.norm_eps);
-        record(trace, &name("attn_in"), &[t_len, d], &h);
+        record(trace, &name("attn_in"), &[n, d], &h);
 
-        let mut q = linear(&h, &l.wq, t_len, d, nh * hd); // [T, H*Hd]
-        let mut k = linear(&h, &l.wk, t_len, d, nkv * hd); // [T, K*Hd]
-        let v = linear(&h, &l.wv, t_len, d, nkv * hd); // [T, K*Hd]
-        apply_rope(&mut q, nh, hd, &self.rope_cos, &self.rope_sin);
-        apply_rope(&mut k, nkv, hd, &self.rope_cos, &self.rope_sin);
+        let mut q = linear(&h, &l.wq, n, d, nh * hd); // [n, H*Hd]
+        let mut k = linear(&h, &l.wk, n, d, nkv * hd); // [n, K*Hd]
+        let v = linear(&h, &l.wv, n, d, nkv * hd); // [n, K*Hd]
+        // Rotate by each token's absolute position, not its index in this call.
+        apply_rope(&mut q, nh, hd, &m.rope_cos, &m.rope_sin, start);
+        apply_rope(&mut k, nkv, hd, &m.rope_cos, &m.rope_sin, start);
         if trace.is_some() {
-            // The reference traces per head: [heads, T, Hd].
-            record(
-                trace,
-                &name("q"),
-                &[nh, t_len, hd],
-                &heads_first(&q, t_len, nh, hd),
-            );
+            // The reference traces per head: [heads, n, Hd].
+            record(trace, &name("q"), &[nh, n, hd], &heads_first(&q, n, nh, hd));
             record(
                 trace,
                 &name("k"),
-                &[nkv, t_len, hd],
-                &heads_first(&k, t_len, nkv, hd),
+                &[nkv, n, hd],
+                &heads_first(&k, n, nkv, hd),
             );
             record(
                 trace,
                 &name("v"),
-                &[nkv, t_len, hd],
-                &heads_first(&v, t_len, nkv, hd),
+                &[nkv, n, hd],
+                &heads_first(&v, n, nkv, hd),
             );
         }
 
-        let (attn, weights) = attention(&q, &k, &v, t_len, nh, nkv, hd);
+        // Append the new keys and values to the cache.
+        let kv = nkv * hd;
+        self.k_cache[i][start * kv..end * kv].copy_from_slice(&k);
+        self.v_cache[i][start * kv..end * kv].copy_from_slice(&v);
+
+        let (attn, weights) = attention(
+            &q,
+            &self.k_cache[i][..end * kv],
+            &self.v_cache[i][..end * kv],
+            start,
+            n,
+            nh,
+            nkv,
+            hd,
+        );
         if trace.is_some() {
-            record(trace, &name("attn_weights"), &[nh, t_len, t_len], &weights);
+            record(trace, &name("attn_weights"), &[nh, n, end], &weights);
         }
-        let attn_out = linear(&attn, &l.wo, t_len, nh * hd, d);
-        record(trace, &name("attn_out"), &[t_len, d], &attn_out);
+        let attn_out = linear(&attn, &l.wo, n, nh * hd, d);
+        record(trace, &name("attn_out"), &[n, d], &attn_out);
         add(&mut x, &attn_out);
-        record(trace, &name("resid_mid"), &[t_len, d], &x);
+        record(trace, &name("resid_mid"), &[n, d], &x);
 
         // --- MLP (SwiGLU): per position, D -> F neurons -> D. ---
         let h = rmsnorm(&x, &l.mlp_norm, c.norm_eps);
-        record(trace, &name("mlp_in"), &[t_len, d], &h);
-        let gate = linear(&h, &l.w_gate, t_len, d, f);
-        let up = linear(&h, &l.w_up, t_len, d, f);
+        record(trace, &name("mlp_in"), &[n, d], &h);
+        let gate = linear(&h, &l.w_gate, n, d, f);
+        let up = linear(&h, &l.w_up, n, d, f);
         let act: Vec<f32> = gate.iter().zip(&up).map(|(&g, &u)| silu(g) * u).collect();
-        record(trace, &name("mlp_act"), &[t_len, f], &act);
-        let mlp_out = linear(&act, &l.w_down, t_len, f, d);
-        record(trace, &name("mlp_out"), &[t_len, d], &mlp_out);
+        record(trace, &name("mlp_act"), &[n, f], &act);
+        let mlp_out = linear(&act, &l.w_down, n, f, d);
+        record(trace, &name("mlp_out"), &[n, d], &mlp_out);
         add(&mut x, &mlp_out);
-        record(trace, &name("resid_out"), &[t_len, d], &x);
+        record(trace, &name("resid_out"), &[n, d], &x);
         x
     }
 }
 
-/// Causal multi-head attention with grouped key/value heads.
+/// Causal multi-head attention with grouped key/value heads, over a KV cache.
 ///
-/// For each query head and position t: score every position s <= t, softmax the scores, and
-/// average the values with those weights. The causal mask is simply that s never goes past t.
-/// Returns the output `[T, H*Hd]` and the weights `[H, T, T]` (zero above the diagonal).
+/// `q` holds `n` new queries at absolute positions `start..start+n`; `k`/`v` hold keys and values
+/// for positions `0..start+n`. Query at position t scores every position s <= t, softmaxes the
+/// scores and averages the values with those weights. The causal mask is simply that s never goes
+/// past t. Returns the output `[n, H*Hd]` and the weights `[H, n, start+n]` (zero after t).
+#[allow(clippy::too_many_arguments)]
 fn attention(
     q: &[f32],
     k: &[f32],
     v: &[f32],
-    t_len: usize,
+    start: usize,
+    n: usize,
     nh: usize,
     nkv: usize,
     hd: usize,
 ) -> (Vec<f32>, Vec<f32>) {
+    let total = start + n;
     let group = nh / nkv;
     let scale = 1.0 / (hd as f32).sqrt();
-    let mut out = vec![0.0; t_len * nh * hd];
-    let mut weights = vec![0.0; nh * t_len * t_len];
+    let mut out = vec![0.0; n * nh * hd];
+    let mut weights = vec![0.0; nh * n * total];
     for h in 0..nh {
         let kv = h / group; // query heads 0..group share kv head 0, and so on
-        for t in 0..t_len {
-            let qt = &q[(t * nh + h) * hd..][..hd];
-            let w = &mut weights[(h * t_len + t) * t_len..][..t_len];
+        for r in 0..n {
+            let t = start + r; // absolute position of this query
+            let qt = &q[(r * nh + h) * hd..][..hd];
+            let w = &mut weights[(h * n + r) * total..][..total];
             for (s, ws) in w[..=t].iter_mut().enumerate() {
                 *ws = dot(qt, &k[(s * nkv + kv) * hd..][..hd]) * scale;
             }
             softmax(&mut w[..=t]);
-            let ot = &mut out[(t * nh + h) * hd..][..hd];
+            let ot = &mut out[(r * nh + h) * hd..][..hd];
             for (s, &ws) in w[..=t].iter().enumerate() {
                 for (o, &vv) in ot.iter_mut().zip(&v[(s * nkv + kv) * hd..][..hd]) {
                     *o += ws * vv;
@@ -260,11 +325,11 @@ fn add(x: &mut [f32], y: &[f32]) {
     }
 }
 
-/// `[T, heads*Hd]` -> `[heads, T, Hd]`.
-fn heads_first(x: &[f32], t_len: usize, heads: usize, hd: usize) -> Vec<f32> {
+/// `[n, heads*Hd]` -> `[heads, n, Hd]`.
+fn heads_first(x: &[f32], n: usize, heads: usize, hd: usize) -> Vec<f32> {
     let mut out = Vec::with_capacity(x.len());
     for h in 0..heads {
-        for t in 0..t_len {
+        for t in 0..n {
             out.extend_from_slice(&x[(t * heads + h) * hd..][..hd]);
         }
     }
