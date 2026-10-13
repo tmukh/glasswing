@@ -13,12 +13,13 @@ RUN cargo build --release --locked -p glasswing-server
 # SmolLM2-135M-Instruct (Apache-2.0), revision 12fd25f77366fa6b3b4b768ec3050bf629380bac.
 FROM scratch AS models
 ARG HF=https://huggingface.co/HuggingFaceTB/SmolLM2-135M-Instruct/resolve/12fd25f77366fa6b3b4b768ec3050bf629380bac
-ADD --checksum=sha256:8eb740e8bbe4cff95ea7b4588d17a2432deb16e8075bc5828ff7ba9be94d982a $HF/config.json /models/smollm2/config.json
-ADD --checksum=sha256:9ca9acddb6525a194ec8ac7a87f24fbba7232a9a15ffa1af0c1224fcd888e47c $HF/tokenizer.json /models/smollm2/tokenizer.json
-ADD --checksum=sha256:5af571cbf074e6d21a03528d2330792e532ca608f24ac70a143f6b369968ab8c $HF/model.safetensors /models/smollm2/model.safetensors
+ADD --chmod=644 --checksum=sha256:8eb740e8bbe4cff95ea7b4588d17a2432deb16e8075bc5828ff7ba9be94d982a $HF/config.json /models/smollm2/config.json
+ADD --chmod=644 --checksum=sha256:9ca9acddb6525a194ec8ac7a87f24fbba7232a9a15ffa1af0c1224fcd888e47c $HF/tokenizer.json /models/smollm2/tokenizer.json
+ADD --chmod=644 --checksum=sha256:5af571cbf074e6d21a03528d2330792e532ca608f24ac70a143f6b369968ab8c $HF/model.safetensors /models/smollm2/model.safetensors
 # glasswing, from this repo's release (the same files the browser downloads).
+# --chmod: files fetched by ADD from a URL are 600 by default, unreadable for the non-root user.
 ARG GW=https://github.com/tmukh/glasswing/releases/download/v0.1.0
-ADD --checksum=sha256:GLASSWING_WEIGHTS_SHA256 $GW/model-f16.safetensors /models/glasswing/model-f16.safetensors
+ADD --chmod=644 --checksum=sha256:GLASSWING_WEIGHTS_SHA256 $GW/model-f16.safetensors /models/glasswing/model-f16.safetensors
 COPY assets/tokenizer.json /models/glasswing/tokenizer.json
 
 # --- run ---------------------------------------------------------------------------------------
