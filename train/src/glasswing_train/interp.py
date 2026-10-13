@@ -9,7 +9,7 @@ Writes docs/interp/results.json and figures (PNG) to docs/interp/.
      the head looks up "what came next last time";
    - previous-token score: attention to the position right before.
 2. Ablation on the repeated half (where copying is the whole job) and on real stories:
-   top induction heads vs the same number of random heads.
+   the induction circuit (induction head + the previous-token heads before it) vs random heads.
 3. A name task in the stories' own style: "Lily and Ben were playing in the park. Lily gave the
    ball to" -> " Ben". Accuracy, logit difference (Ben - Lily), and per-head ablation effects.
 4. Activation patching on the name task: run the corrupted prompt (second subject swapped, so
@@ -59,8 +59,8 @@ NAMES = [
     " Leo",
 ]
 TEMPLATES = [
-    "{A} and {B} were playing in the park.{A2} gave the ball to",
-    "{A} and {B} went to the store.{A2} bought a toy for",
+    "{A} and{B} were playing in the park.{A2} gave the ball to",
+    "{A} and{B} went to the store.{A2} bought a toy for",
     "One day,{A} met{B} at school.{A2} said hello to",
 ]
 
@@ -263,7 +263,13 @@ def figures(res: dict) -> None:
     groups = ["second copy of repeated text", "real stories"]
     conds = [
         ("none", "nothing ablated", GREEN),
-        ("induction", f"top {len(ab['induction_heads'])} induction heads", GOLD),
+        (
+            "induction",
+            "the induction circuit ("
+            + ", ".join(f"L{li + 1}H{h + 1}" for li, h in ab["induction_heads"])
+            + ")",
+            GOLD,
+        ),
         ("random", f"{len(ab['induction_heads'])} random heads", BLUE),
     ]
     fig, ax = plt.subplots(figsize=(8, 4.6))
@@ -357,7 +363,15 @@ def main() -> None:
         ((ind[li, h].item(), li, h) for li in range(cfg.n_layers) for h in range(cfg.n_heads)),
         reverse=True,
     )
-    top = [(li, h) for _, li, h in order[:3]]
+    # The circuit: the strongest induction head plus the two strongest previous-token heads in
+    # earlier layers (the heads whose output it can read).
+    ind_l, ind_h = order[0][1], order[0][2]
+    prev_order = sorted(
+        ((prev[li, h].item(), li, h) for li in range(ind_l) for h in range(cfg.n_heads)),
+        reverse=True,
+    )
+    top = [(ind_l, ind_h)] + [(li, h) for _, li, h in prev_order[:2]]
+    print("circuit:", [f"L{li + 1}H{h + 1}" for li, h in top])
     print("top induction heads:", [(f"L{li + 1}H{h + 1}", round(s, 3)) for s, li, h in order[:5]])
 
     # Real stories for the collateral check: 32 windows of validation text.
