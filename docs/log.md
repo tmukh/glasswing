@@ -33,3 +33,8 @@ KV cache 94x faster than recomputing; dot() with 8 accumulators 94 -> ~295 token
 Break-it lab M3, RoPE position off by one only for single-token decode: fixture parity stayed green,
 `cargo test --test parity` failed in kv_cache_gives_the_same_logits_as_a_full_pass (position 10, not 0:
 a constant shift is invisible to RoPE). compare.py: one story diverged at char 411. Fixed with `git revert`.
+
+M4: wasm engine (288 KB) in a Web Worker, 285 traced tokens/s in Node/V8 (193 without simd128); f16
+weights 31.5 MB, greedy stories unchanged; CI web job (size budget, wasm == native). Release v0.1.0.
+Break-it lab M4 skipped (the planned one, shipping f32 weights past the budget, is covered by the
+size check in CI and the f16 conversion tests).
