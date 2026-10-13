@@ -40,3 +40,8 @@ Concepts already confident in homelab-dev's or night-sky-digest's ledger are not
 | Decode is memory-bound; tokens/s ~ bandwidth / model size | M3 | new | 2026-10-13 |  |
 | Float sums and SIMD: why 8 accumulators vectorise | M3 | new | 2026-10-13 | 94 -> ~295 tokens/s |
 | Testing incremental paths separately (lab: RoPE off by one) | M3 | new | 2026-10-13 | parity stayed green, cache test caught it |
+| WebAssembly, wasm-bindgen, the thin-binding pattern | M4 | new | 2026-10-13 |  |
+| Web Workers, transferable arrays | M4 | new | 2026-10-13 |  |
+| f16 vs f32: range vs precision; widening on load | M4 | new | 2026-10-13 | 62.9 -> 31.5 MB, stories unchanged |
+| WebAssembly SIMD (simd128) | M4 | new | 2026-10-13 | 193 -> 285 tokens/s |
+| Size budgets in CI; release bundles pinned by sha256 | M4 | new | 2026-10-13 |  |

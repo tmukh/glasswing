@@ -87,6 +87,28 @@ impl Sampler {
     }
 }
 
+/// Softmax over all logits (temperature 1), then the `k` most likely ids and their probabilities,
+/// most likely first.
+pub fn softmax_top_k(logits: &[f32], k: usize) -> (Vec<u32>, Vec<f32>) {
+    let mut probs = logits.to_vec();
+    softmax(&mut probs);
+    let mut ids: Vec<u32> = (0..probs.len() as u32).collect();
+    let k = k.min(ids.len());
+    ids.select_nth_unstable_by(k.saturating_sub(1), |&a, &b| {
+        probs[b as usize]
+            .total_cmp(&probs[a as usize])
+            .then(a.cmp(&b))
+    });
+    ids.truncate(k);
+    ids.sort_unstable_by(|&a, &b| {
+        probs[b as usize]
+            .total_cmp(&probs[a as usize])
+            .then(a.cmp(&b))
+    });
+    let top = ids.iter().map(|&i| probs[i as usize]).collect();
+    (ids, top)
+}
+
 /// Index of the largest value; the first one on ties (like PyTorch's argmax).
 pub fn argmax(x: &[f32]) -> u32 {
     let mut best = 0;
@@ -101,6 +123,14 @@ pub fn argmax(x: &[f32]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn top_k_is_sorted_and_sums_below_one() {
+        let (ids, probs) = softmax_top_k(&[0.0, 3.0, 1.0, 2.0, -1.0], 3);
+        assert_eq!(ids, vec![1, 3, 2]);
+        assert!(probs.windows(2).all(|w| w[0] >= w[1]));
+        assert!(probs.iter().sum::<f32>() < 1.0);
+    }
 
     #[test]
     fn greedy_takes_the_first_maximum() {

@@ -8,6 +8,7 @@ pub mod model;
 pub mod ops;
 pub mod safetensors;
 pub mod sample;
+pub mod step;
 pub mod tokenizer;
 pub mod trace;
 

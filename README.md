@@ -8,7 +8,7 @@ from scratch in Rust and compiled to WebAssembly. While it writes, you see the t
 heads, the neurons firing and the next-token probabilities. You can switch parts of it off and see
 what changes.
 
-Status: **M3**: trained (val loss 1.182 after 1.31B tokens, 3 h 38 min on one RTX 3060 Ti); KV cache, sampling and a CLI in Rust. Concepts: [docs/concepts](docs/concepts). See [docs/plan.md](docs/plan.md).
+Status: **M4**: runs in the browser (WebAssembly, f16 weights). **M3**: trained (val loss 1.182 after 1.31B tokens, 3 h 38 min on one RTX 3060 Ti); KV cache, sampling and a CLI in Rust. Concepts: [docs/concepts](docs/concepts). See [docs/plan.md](docs/plan.md).
 
 ## Layout
 

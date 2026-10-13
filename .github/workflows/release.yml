@@ -1,0 +1,42 @@
+name: release
+
+# Tag vX.Y.Z -> a GitHub Release with the browser bundle, built here from the tagged source:
+# glasswing_wasm.js, glasswing_wasm_bg.wasm, worker.js, tokenizer.json.
+# The trained weights (model-f16.safetensors) come from the training machine and are added with
+# `gh release upload`; takodana.dev pins every file by sha256 (see its glasswing.lock.json).
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # create the release
+    env:
+      WASM_BINDGEN: "0.2.129"
+      WASM_BINDGEN_SHA256: 82d12bb940e2d4e72e0d5605387fc1b8ca179044e012b620f0ce4e7440e8320e
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install wasm-bindgen (pinned, checksum verified)
+        run: |
+          f="wasm-bindgen-${WASM_BINDGEN}-x86_64-unknown-linux-musl"
+          curl -sSfL -o "$f.tar.gz" \
+            "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${WASM_BINDGEN}/$f.tar.gz"
+          echo "${WASM_BINDGEN_SHA256}  $f.tar.gz" | sha256sum -c -
+          tar xzf "$f.tar.gz"
+          echo "$PWD/$f" >> "$GITHUB_PATH"
+      - run: sh scripts/build-web.sh
+      - name: Create release
+        run: |
+          cp web/worker.js assets/tokenizer.json web/pkg/
+          (cd web/pkg && sha256sum glasswing_wasm.js glasswing_wasm_bg.wasm worker.js tokenizer.json)
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes \
+            "Browser bundle built by CI from $GITHUB_SHA. Weights uploaded separately." \
+            web/pkg/glasswing_wasm.js web/pkg/glasswing_wasm_bg.wasm web/pkg/worker.js \
+            web/pkg/tokenizer.json
