@@ -29,9 +29,7 @@ COPY --from=build /src/target/release/glasswing-server /usr/local/bin/glasswing-
 COPY --from=models /models /models
 COPY LICENSE /usr/share/doc/glasswing/LICENSE
 ENV PORT=8080 \
-    GLASSWING_SMOLLM2_DIR=/models/smollm2 \
-    GLASSWING_WEIGHTS=/models/glasswing/model-f16.safetensors \
-    GLASSWING_TOKENIZER=/models/glasswing/tokenizer.json
+    GLASSWING_SMOLLM2_DIR=/models/smollm2
 USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/glasswing-server"]
