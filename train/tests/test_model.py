@@ -164,10 +164,15 @@ def test_ablation_matches_between_attention_paths():
 
 def test_patching_own_activation_is_a_no_op():
     model = random_tiny_model()
+    torch.manual_seed(0)
     tokens = torch.randint(0, TINY.vocab_size, (1, 10))
     trace: dict = {}
     with torch.no_grad():
-        base = model(tokens, trace=trace)
+        # Compare runs on the same (fused) attention path; the trace run only supplies the vector.
+        # Comparing the fused with the explicit path flaked: with the fixture's large weights the
+        # two differ by slightly more than 1e-4 for some random token draws.
+        model(tokens, trace=trace)
+        base = model(tokens)
         vec = trace["layers.0.resid_out"][0, 4]
         same = model(tokens, patch={(0, 4): vec})
         other = model(tokens, patch={(0, 4): torch.zeros_like(vec)})
