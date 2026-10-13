@@ -62,3 +62,9 @@ describe networkpolicy glasswing` showed the missing namespace. Pod stayed Ready
 come from the node). Also: one kubectl write (an Argo CD refresh annotation) before I was told
 forced syncs are fine; Argo CD force syncs used for the lab after that.
 
+M5 + M6 on the site (takodana.dev #4, homelab-dev #45): https://takodana.dev/projects/glasswing/ and
+the write-up /writing/glasswing-induction-heads/. Release files fetched and sha256-verified at build;
+Cloudflare caches model.bin (cf-cache-status MISS then HIT). One image build on main failed on a
+transient Google Fonts download inside Docker; a re-run passed. Live browser test: same seed, circuit
+off -> a different story; no console errors.
+Break-it lab M5 skipped (the live checks above replaced it).
