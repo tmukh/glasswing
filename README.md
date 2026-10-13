@@ -1,6 +1,6 @@
 # glasswing
 
-A small language model you can watch think.
+A small language model you can watch think: **[takodana.dev/projects/glasswing](https://takodana.dev/projects/glasswing/)**.
 
 glasswing is a Llama-style transformer (15.7M parameters) trained on
 [TinyStories](https://arxiv.org/abs/2305.07759), running in the browser on an inference engine written

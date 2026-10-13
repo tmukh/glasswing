@@ -60,3 +60,7 @@ Concepts already confident in homelab-dev's or night-sky-digest's ledger are not
 | Logit difference as a task metric | M6 | new | 2026-10-13 |  |
 | Activation patching (clean vs corrupted, restored share) | M6 | new | 2026-10-13 | name moves in layers 5-7 |
 | Logit lens | M6 | new | 2026-10-13 | answer appears at layer 5 |
+| Visual encoding: sign as colour, magnitude as brightness, per-layer percentile scaling | M5 | new | 2026-10-13 |  |
+| Head focus (max weight above uniform), attention sinks | M5 | new | 2026-10-13 |  |
+| Decoupling computation from playback; render loop outside React | M5 | new | 2026-10-13 |  |
+| Immutable, versioned static assets; CDN caching by extension | M5 | new | 2026-10-13 | model.bin cached by Cloudflare |
